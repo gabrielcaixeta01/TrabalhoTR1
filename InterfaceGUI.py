@@ -5,7 +5,7 @@ Exibe formas de onda via matplotlib embutido no GTK.
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk
 
 import numpy as np
 import matplotlib
@@ -93,7 +93,7 @@ class JanelaPrincipal(Gtk.Window):
         # Modulação analógica (por portadora)
         painel.pack_start(Gtk.Label(label="Modulação analógica:", xalign=0), False, False, 0)
         self.combo_mod_analog = Gtk.ComboBoxText()
-        for op in ["ASK", "FSK", "PSK", "QPSK", "16-QAM"]:
+        for op in ["Nenhuma (banda-base)", "ASK", "FSK", "PSK", "QPSK", "16-QAM"]:
             self.combo_mod_analog.append_text(op)
         self.combo_mod_analog.set_active(0)
         painel.pack_start(self.combo_mod_analog, False, False, 0)
@@ -120,7 +120,7 @@ class JanelaPrincipal(Gtk.Window):
     # ─── Painel gráfico ────────────────────────────────────────────────────────
 
     def _painel_grafico(self) -> FigureCanvas:
-        self.figura = Figure(figsize=(8, 6), tight_layout=True)
+        self.figura = Figure(figsize=(8, 6), layout="tight")
         self.canvas = FigureCanvas(self.figura)
         return self.canvas
 

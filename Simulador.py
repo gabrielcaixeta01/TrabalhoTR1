@@ -12,15 +12,10 @@ import CamadaEnlace as CE
 import InterfaceGUI as GUI
 
 
-# ─── Fila de comunicação entre TX e RX ────────────────────────────────────────
-
-_fila_canal: queue.Queue = queue.Queue()
-
-
 # ─── Transmissor (TX) ──────────────────────────────────────────────────────────
 
 def transmissor(dados: bytes, config: dict,
-                resultado_tx: list) -> None:
+                resultado_tx: list, fila: queue.Queue) -> None:
     """
     Executa em thread separada.
     Enquadra, aplica EDC, modula e coloca sinal no canal.
@@ -59,18 +54,7 @@ def transmissor(dados: bytes, config: dict,
     # 3. Modulação
     bits = CE._bytes_para_bits(payload_bytes)
     mod = config["mod_analog"]
-    if mod == "ASK":
-        sinal = CF.ask(bits)
-    elif mod == "FSK":
-        sinal = CF.fsk(bits)
-    elif mod == "PSK":
-        sinal = CF.psk(bits)
-    elif mod == "QPSK":
-        sinal = CF.qpsk(bits)
-    elif mod == "16-QAM":
-        sinal = CF.qam16(bits)
-    else:
-        # Banda-base como fallback
+    if mod == "Nenhuma (banda-base)":
         mod_digital = config["mod_digital"]
         if mod_digital == "Manchester":
             sinal = CF.manchester(bits)
@@ -78,20 +62,30 @@ def transmissor(dados: bytes, config: dict,
             sinal = CF.bipolar(bits)
         else:
             sinal = CF.nrz_polar(bits)
+    elif mod == "ASK":
+        sinal = CF.ask(bits)
+    elif mod == "FSK":
+        sinal = CF.fsk(bits)
+    elif mod == "PSK":
+        sinal = CF.psk(bits)
+    elif mod == "QPSK":
+        sinal = CF.qpsk(bits)
+    else:  # 16-QAM
+        sinal = CF.qam16(bits)
 
     resultado_tx.append(sinal)
-    _fila_canal.put((sinal, config))
+    fila.put((sinal, config))
 
 
 # ─── Receptor (RX) ────────────────────────────────────────────────────────────
 
-def receptor(resultado_rx: list) -> None:
+def receptor(resultado_rx: list, fila: queue.Queue) -> None:
     """
     Executa em thread separada.
     Recupera sinal do canal, adiciona ruído, demodula e verifica EDC.
     Armazena (sinal_canal, sinal_rx, mensagem) em resultado_rx[0].
     """
-    sinal_tx, config = _fila_canal.get()
+    sinal_tx, config = fila.get()
 
     # 4. Canal com ruído gaussiano (em V)
     sigma = config["ruido_sigma"]
@@ -99,10 +93,24 @@ def receptor(resultado_rx: list) -> None:
 
     # 5. Demodulação
     mod = config["mod_analog"]
-    if mod == "ASK":
+    if mod == "Nenhuma (banda-base)":
+        mod_digital = config["mod_digital"]
+        if mod_digital == "Manchester":
+            bits_rx = CF.demodular_manchester(sinal_canal)
+        elif mod_digital == "Bipolar":
+            bits_rx = CF.demodular_bipolar(sinal_canal)
+        else:
+            bits_rx = CF.demodular_nrz_polar(sinal_canal)
+    elif mod == "ASK":
         bits_rx = CF.demodular_ask(sinal_canal)
-    else:
-        bits_rx = CF.demodular_nrz_polar(sinal_canal)
+    elif mod == "FSK":
+        bits_rx = CF.demodular_fsk(sinal_canal)
+    elif mod == "PSK":
+        bits_rx = CF.demodular_psk(sinal_canal)
+    elif mod == "QPSK":
+        bits_rx = CF.demodular_qpsk(sinal_canal)
+    else:  # 16-QAM
+        bits_rx = CF.demodular_qam16(sinal_canal)
 
     payload_bytes = CE._bits_para_bytes(bits_rx)
 
@@ -155,6 +163,8 @@ def _partir_quadros_contagem(dados: bytes) -> list[bytes]:
     i = 0
     while i < len(dados):
         tamanho = dados[i]
+        if tamanho == 0:  # byte corrompido — evita loop infinito
+            break
         quadros.append(dados[i:i + tamanho])
         i += tamanho
     return quadros
@@ -197,9 +207,10 @@ def transmitir(config: dict):
 
     resultado_tx: list = []
     resultado_rx: list = []
+    fila: queue.Queue = queue.Queue()  # fila local por chamada — sem vazamento entre transmissões
 
-    t_tx = threading.Thread(target=transmissor, args=(dados, config, resultado_tx))
-    t_rx = threading.Thread(target=receptor, args=(resultado_rx,))
+    t_tx = threading.Thread(target=transmissor, args=(dados, config, resultado_tx, fila))
+    t_rx = threading.Thread(target=receptor,    args=(resultado_rx, fila))
 
     t_tx.start()
     t_rx.start()

@@ -59,7 +59,8 @@ def desenquadrar_insercao_bytes(quadros: list[bytes]) -> bytes:
         while i < len(payload):
             if payload[i] == ESC_BYTE[0]:
                 i += 1
-                resultado.append(payload[i] ^ ESC_XOR)
+                if i < len(payload):
+                    resultado.append(payload[i] ^ ESC_XOR)
             else:
                 resultado.append(payload[i])
             i += 1
@@ -203,16 +204,17 @@ def crc32(dados: bytes) -> bytes:
 
 
 def verificar_crc32(dados: bytes) -> bool:
-    """Verifica CRC-32; últimos 4 bytes são o CRC."""
+    """Verifica CRC-32; recomputa sobre os dados e compara com os 4 bytes armazenados."""
+    crc_armazenado = struct.unpack("<I", dados[-4:])[0]
     crc = 0xFFFFFFFF
-    for byte in dados:
+    for byte in dados[:-4]:
         crc ^= byte
         for _ in range(8):
             if crc & 1:
                 crc = (crc >> 1) ^ CRC32_POLY
             else:
                 crc >>= 1
-    return (crc ^ 0xFFFFFFFF) == 0
+    return (crc ^ 0xFFFFFFFF) == crc_armazenado
 
 
 # ─── Correção de erros — Hamming ───────────────────────────────────────────────
