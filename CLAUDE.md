@@ -19,26 +19,26 @@ Simulador.py      — rotina principal (TX/RX em threads separadas)
 ## Checklist de Implementação
 
 ### Camada Física (CamadaFisica.py)
-- [ ] NRZ-Polar (banda-base)
-- [ ] Manchester (banda-base)
-- [ ] Bipolar (banda-base)
-- [ ] ASK (portadora)
-- [ ] FSK (portadora)
-- [ ] PSK / QPSK (portadora)
-- [ ] 16-QAM (portadora)
+- [x] NRZ-Polar (banda-base)
+- [x] Manchester (banda-base)
+- [x] Bipolar (banda-base)
+- [x] ASK (portadora)
+- [x] FSK (portadora)
+- [x] PSK / QPSK (portadora)
+- [x] 16-QAM (portadora)
 
 ### Camada de Enlace — Enquadramento (CamadaEnlace.py)
-- [ ] Contagem de caracteres
-- [ ] Flags + inserção de bytes/caracteres
-- [ ] Flags + inserção de bits
+- [x] Contagem de caracteres
+- [x] Flags + inserção de bytes/caracteres
+- [x] Flags + inserção de bits
 
 ### Camada de Enlace — Detecção de Erros
-- [ ] Bit de paridade par
-- [ ] Checksum (conforme aula)
-- [ ] CRC-32 (IEEE 802)
+- [x] Bit de paridade par
+- [x] Checksum (conforme aula)
+- [x] CRC-32 (IEEE 802)
 
 ### Camada de Enlace — Correção de Erros
-- [ ] Hamming
+- [x] Hamming
 
 ## GUI (InterfaceGUI.py)
 

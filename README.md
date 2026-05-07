@@ -195,7 +195,7 @@ O método mais robusto para detecção. Trata os dados como um grande número bi
 
 ```
 CRC = resto de (dados ÷ polinômio)
-Receptor refaz a divisão — se o resto ≠ 0, houve erro.
+Receptor recomputa o CRC sobre os dados e compara com os 4 bytes armazenados.
 ```
 
 Detecta todos os erros em rajada de até 32 bits. É usado em Ethernet, ZIP, PNG, entre outros.
@@ -414,8 +414,8 @@ A interface é construída com **GTK3** (via PyGObject) e os gráficos com **mat
 | Tamanho EDC | Tamanho do código de detecção (referência informativa) |
 | Enquadramento | Técnica usada para delimitar os quadros |
 | Detecção/Correção | Algoritmo de proteção contra erros |
-| Modulação digital | Modulação banda-base (NRZ-Polar, Manchester, Bipolar) |
-| Modulação analógica | Modulação por portadora (ASK, FSK, PSK, QPSK, 16-QAM) |
+| Modulação digital | Modulação banda-base usada quando analógica = "Nenhuma (banda-base)" |
+| Modulação analógica | "Nenhuma (banda-base)" usa modulação digital; ou escolha ASK, FSK, PSK, QPSK, 16-QAM |
 | Ruído σ (V) | Intensidade do ruído gaussiano no canal |
 
 ### Painel direito — Gráficos
