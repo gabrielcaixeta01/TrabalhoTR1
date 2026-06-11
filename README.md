@@ -179,8 +179,10 @@ A ordem abaixo permite testar cada etapa isoladamente (sempre teste TX → RX se
 sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0   # GTK no Linux
 pip install numpy matplotlib
 python3 simulador.py
-```
 
+
+~/miniconda3/bin/python3 simulador.py
+```
 ---
 
 ## 6. Mapeamento com os critérios de avaliação
