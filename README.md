@@ -5,6 +5,8 @@ Simulador das camadas física e de enlace de uma rede de computadores, implement
 **Linguagem:** Python 3 + PyGObject (GTK 3)
 **Restrição importante:** nenhum algoritmo central (CRC, Hamming, checksum, modulações) pode usar biblioteca externa pronta — tudo implementado manualmente. NumPy/Matplotlib são usados apenas como apoio numérico e para plotar os sinais (não implementam nenhum protocolo).
 
+**Integrantes:** Gabriel Caixeta Romero, Gustavo Henrique Andrade Cavalcanti, Fernando Augusto Hortencio.
+
 ---
 
 ## 1. Estrutura de arquivos
