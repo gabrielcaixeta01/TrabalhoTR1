@@ -17,11 +17,10 @@ Convenções:
     (detecção coerente) seguida da escolha do ponto de constelação mais
     próximo.
 
-ATENÇÃO (Manchester): adotamos a convenção do Forouzan/IEEE 802.3:
-  bit 0 -> transição ALTO->BAIXO no meio do bit
-  bit 1 -> transição BAIXO->ALTO no meio do bit
-Confirme nos slides da disciplina se a convenção é a mesma; se for a
-oposta (Tanenbaum), basta inverter os sinais em modular/demodular.
+ATENÇÃO (Manchester): adotamos a convenção Tanenbaum / G.E. Thomas,
+que é a obtida fazendo XOR do NRZ com um clock SUBINDO (01):
+  bit 0 -> transição BAIXO->ALTO no meio do bit
+  bit 1 -> transição ALTO->BAIXO no meio do bit
 """
 
 import math
@@ -46,9 +45,13 @@ def modular_nrz_polar(bits):
     """NRZ-Polar: bit 1 -> +V constante; bit 0 -> -V constante."""
     sinal = []
     for bit in bits:
-        nivel = V if bit == 1 else -V
+        if bit == 1:
+            nivel = V
+        else:
+            nivel = -V
+
         sinal += [nivel] * AMOSTRAS_POR_BIT      # mantém o nível o bit inteiro
-    return sinal
+    return sinal # lista da concatenacao de outras listas de nivel
 
 
 def demodular_nrz_polar(sinal):
@@ -57,34 +60,41 @@ def demodular_nrz_polar(sinal):
     bits = []
     for i in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
         media = sum(sinal[i:i + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
-        bits.append(1 if media > 0 else 0)
+        if media > 0: # i=0: média de [+V,+V,+V,+V] = +V → bit 1
+            bits.append(1)
+        else:
+            bits.append(0)
     return bits
 
 
 def modular_manchester(bits):
     """Manchester: sempre há transição no MEIO do bit (autossincronização).
-    bit 0: +V na 1ª metade, -V na 2ª  (alto -> baixo)
-    bit 1: -V na 1ª metade, +V na 2ª  (baixo -> alto)
-    Equivale a XOR do NRZ com o clock."""
+    bit 0: -V na 1ª metade, +V na 2ª  (baixo -> alto)
+    bit 1: +V na 1ª metade, -V na 2ª  (alto -> baixo)
+    Equivale a XOR do NRZ com o clock SUBINDO (01)."""
     metade = AMOSTRAS_POR_BIT // 2
     sinal = []
     for bit in bits:
         if bit == 0:
-            sinal += [V] * metade + [-V] * (AMOSTRAS_POR_BIT - metade)
+            sinal += [-V] * metade + [V] * (AMOSTRAS_POR_BIT - metade) # aqui usa assim caso alguem mude o n de amostras
         else:
-            sinal += [-V] * metade + [V] * (AMOSTRAS_POR_BIT - metade)
+            sinal += [V] * metade + [-V] * (AMOSTRAS_POR_BIT - metade)
     return sinal
 
 
 def demodular_manchester(sinal):
     """Compara a média da 1ª metade com a da 2ª metade de cada bit:
-    se a 2ª metade for maior, houve transição de subida -> bit 1."""
+    se a 1ª metade for maior, houve transição de descida -> bit 1."""
     metade = AMOSTRAS_POR_BIT // 2
     bits = []
     for i in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
         m1 = sum(sinal[i:i + metade]) / metade
         m2 = sum(sinal[i + metade:i + AMOSTRAS_POR_BIT]) / (AMOSTRAS_POR_BIT - metade)
-        bits.append(1 if m2 > m1 else 0)
+        
+        if m1 > m2: #alto -> baixo
+            bits.append(1)
+        else: #baixo -> alto
+            bits.append(0)
     return bits
 
 
@@ -108,7 +118,11 @@ def demodular_bipolar(sinal):
     bits = []
     for i in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
         media = sum(sinal[i:i + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
-        bits.append(1 if abs(media) > V / 2 else 0)
+        
+        if abs(media) > V / 2: #Se |média| > V/2 → está mais perto de V → bit 1
+            bits.append(1)
+        else:
+            bits.append(0)
     return bits
 
 
