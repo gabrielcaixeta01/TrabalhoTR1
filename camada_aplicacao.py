@@ -34,13 +34,11 @@ def bits_para_texto(bits):
     usamos errors='replace' para que o caractere ilegível apareça como '�'
     em vez de derrubar o programa.
     """
-    # Descarta bits "sobrando" no final que não completam um byte
-    # (podem aparecer por causa de padding da modulação).
-    n_bytes = len(bits) // 8
-    dados = bytearray()
+    n_bytes = len(bits) // 8 
+    dados = bytearray() # mesma coisa que usar []
     for i in range(n_bytes):
         byte = 0
-        for bit in bits[i * 8:(i + 1) * 8]:     # remonta o byte bit a bit
+        for bit in bits[i * 8:(i + 1) * 8]:     # logica pra pegar o 1,2,3... bytes certinho
             byte = (byte << 1) | bit            # desloca e insere o próximo bit
         dados.append(byte)
-    return dados.decode("utf-8", errors="replace")
+    return dados.decode("utf-8", errors="replace") # esse replace insere um <EFBFBD> ao inves de travar o programa
