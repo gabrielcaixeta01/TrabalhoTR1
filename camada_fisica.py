@@ -137,30 +137,59 @@ def demodular_bipolar(sinal):
 # é isso que dá robustez ao ruído.
 # ===========================================================================
 def _onda(c_i, c_q, ciclos):
-    """Gera um símbolo de AMOSTRAS_POR_SIMBOLO amostras com componentes
-    em fase (c_i) e em quadratura (c_q) sobre a portadora de `ciclos`
-    ciclos por símbolo."""
+    """Gera um símbolo de AMOSTRAS_POR_SIMBOLO amostras a partir do ponto
+    (c_i, c_q) da constelação: monta s(t) = I.cos(2.pi.f.t) - Q.sen(2.pi.f.t).
+    `ciclos` é a frequência da portadora medida em ciclos por símbolo."""
     N = AMOSTRAS_POR_SIMBOLO
-    return [c_i * math.cos(2 * math.pi * ciclos * n / N) -
-            c_q * math.sin(2 * math.pi * ciclos * n / N) for n in range(N)]
+    amostras = []
+    for n in range(N):
+        # n/N é a fração do símbolo já percorrida (vai de 0 a quase 1);
+        # multiplicar por ciclos e 2.pi dá o ângulo da portadora nessa amostra.
+        angulo = 2 * math.pi * ciclos * n / N
+        amostras.append(c_i * math.cos(angulo) - c_q * math.sin(angulo))
+    return amostras
 
 
 def _correlacionar(simbolo, ciclos):
-    """Extrai as componentes (I, Q) de um símbolo recebido, projetando-o
-    sobre cos e -sen da portadora de referência (produto interno)."""
+    """Operação inversa de _onda: recupera (I, Q) de um símbolo recebido
+    projetando-o sobre cos e -sen da portadora de referência (produto
+    interno). O fator 2/N normaliza para que a amplitude original volte."""
     N = len(simbolo)
-    i_comp = 2 / N * sum(s * math.cos(2 * math.pi * ciclos * n / N)
-                         for n, s in enumerate(simbolo))
-    q_comp = -2 / N * sum(s * math.sin(2 * math.pi * ciclos * n / N)
-                          for n, s in enumerate(simbolo))
+    soma_cos = 0.0
+    soma_sen = 0.0
+    for n, amostra in enumerate(simbolo):
+        angulo = 2 * math.pi * ciclos * n / N
+        soma_cos += amostra * math.cos(angulo)
+        soma_sen += amostra * math.sin(angulo)
+    i_comp = 2 / N * soma_cos
+    q_comp = -2 / N * soma_sen
     return i_comp, q_comp
 
 
-def _pad(bits, multiplo):
-    """Completa a lista de bits com zeros até um múltiplo do nº de bits
-    por símbolo (necessário para QPSK e 16-QAM). O desenquadramento do
-    receptor descarta esse excedente naturalmente."""
-    return bits + [0] * ((-len(bits)) % multiplo)
+def _pad(bits, bits_por_simbolo):
+    """Completa a lista com zeros até fechar um número inteiro de símbolos
+    (QPSK usa 2 bits/símbolo, 16-QAM usa 4). O receptor descarta esse
+    excedente naturalmente no desenquadramento."""
+    resto = len(bits) % bits_por_simbolo
+    if resto == 0:
+        return bits                              # já é múltiplo, nada a fazer
+    faltam = bits_por_simbolo - resto
+    return bits + [0] * faltam
+
+
+def _bits_do_ponto_mais_proximo(i_c, q_c, constelacao):
+    """Decisão de mínima distância: dentre os pontos da `constelacao`
+    (dict {bits: (I, Q)}), devolve os bits do ponto cujo (I, Q) está mais
+    perto do (i_c, q_c) medido. É o que dá robustez ao ruído."""
+    melhor_bits = None
+    menor_dist = None
+    for bits_simbolo, (i_ref, q_ref) in constelacao.items():
+        # distância ao quadrado (não precisa da raiz: só comparamos entre si)
+        dist = (i_ref - i_c) ** 2 + (q_ref - q_c) ** 2
+        if menor_dist is None or dist < menor_dist:
+            menor_dist = dist
+            melhor_bits = bits_simbolo
+    return list(melhor_bits)
 
 
 # --------------------------------- ASK ------------------------------------
@@ -235,16 +264,13 @@ def modular_qpsk(bits):
 
 
 def demodular_qpsk(sinal):
-    """Recupera (I, Q) por correlação e decide pelo QUADRANTE: o sinal de
-    I e de Q determina diretamente o dibit (decisão de mínima distância)."""
+    """Recupera (I, Q) de cada símbolo por correlação e escolhe o dibit do
+    ponto da constelação mais próximo (decisão de mínima distância)."""
     bits = []
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
         i_c, q_c = _correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
-        # Procura o ponto da constelação mais próximo do (I,Q) medido.
-        melhor = min(_MAPA_QPSK.items(),
-                     key=lambda kv: (kv[1][0] - i_c) ** 2 + (kv[1][1] - q_c) ** 2)
-        bits += list(melhor[0])
+        bits += _bits_do_ponto_mais_proximo(i_c, q_c, _MAPA_QPSK)
     return bits
 
 
@@ -252,6 +278,7 @@ def demodular_qpsk(sinal):
 # 4 bits/símbolo: os 2 primeiros escolhem o nível de I e os 2 últimos o
 # nível de Q, ambos com código Gray sobre os níveis {-3, -1, +1, +3}*(V/3).
 _NIVEIS_GRAY = {(0, 0): -3, (0, 1): -1, (1, 1): 1, (1, 0): 3}
+_BITS_DO_NIVEL = {nivel: bits for bits, nivel in _NIVEIS_GRAY.items()}  # dict inverso
 _ESCALA_QAM = V / 3                              # nível máximo = V
 
 
@@ -268,12 +295,16 @@ def modular_16qam(bits):
 
 
 def _decidir_nivel_gray(valor):
-    """Escolhe o nível {-3,-1,1,3} mais próximo do valor medido e devolve
-    o par de bits Gray correspondente."""
-    nivel = min((-3, -1, 1, 3), key=lambda n: abs(n * _ESCALA_QAM - valor))
-    for bits_, n in _NIVEIS_GRAY.items():
-        if n == nivel:
-            return list(bits_)
+    """Escolhe o nível {-3,-1,1,3} cujo valor em Volts (nível * escala) está
+    mais próximo do `valor` medido e devolve o par de bits Gray dele."""
+    melhor_nivel = None
+    menor_dist = None
+    for nivel in (-3, -1, 1, 3):
+        dist = abs(nivel * _ESCALA_QAM - valor)
+        if menor_dist is None or dist < menor_dist:
+            menor_dist = dist
+            melhor_nivel = nivel
+    return list(_BITS_DO_NIVEL[melhor_nivel])
 
 
 def demodular_16qam(sinal):
