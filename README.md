@@ -3,7 +3,7 @@
 Simulador das camadas física e de enlace de uma rede de computadores, implementando enquadramento, detecção/correção de erros, modulação banda-base e modulação por portadora, com transmissão por um meio de comunicação ruidoso (ruído gaussiano em Volts) e interface gráfica em GTK.
 
 **Linguagem:** Python 3 + PyGObject (GTK 3)
-**Restrição importante:** nenhum algoritmo central (CRC, Hamming, checksum, modulações) pode usar biblioteca externa pronta — tudo implementado manualmente. NumPy/Matplotlib são usados apenas como apoio numérico e para plotar os sinais (não implementam nenhum protocolo).
+**Restrição importante:** nenhum algoritmo central (CRC, Hamming, checksum, modulações) usa biblioteca externa pronta — tudo foi implementado manualmente. Matplotlib é usado apenas para plotar os sinais na interface gráfica.
 
 **Integrantes:** Gabriel Caixeta Romero, Gustavo Henrique Andrade Cavalcanti, Fernando Augusto Hortencio.
 
@@ -14,8 +14,9 @@ Simulador das camadas física e de enlace de uma rede de computadores, implement
 ```
 simulador-tr1/
 ├── README.md
-├── requirements.txt          # PyGObject, numpy, matplotlib
+├── requirements.txt          # matplotlib
 ├── simulador.py              # Rotina principal: orquestra TX → meio → RX
+├── Simulador.py              # Compatibilidade para executar pelo nome antigo
 ├── camada_aplicacao.py       # Texto ↔ bits (codificador/decodificador)
 ├── camada_enlace.py          # Enquadramento, detecção e correção de erros
 ├── camada_fisica.py          # Modulação digital (banda-base) e por portadora
@@ -107,7 +108,7 @@ Demoduladores: por **correlação** com as portadoras de referência (detecção
 ### 3.4 `meio_comunicacao.py`
 | Função | O que faz |
 |---|---|
-| `transmitir(sinal, media, sigma)` | Soma a cada amostra um ruído gaussiano `n(x, σ)` (via `random.gauss` ou `numpy.random.normal`), conforme exigido no enunciado. `media` e `sigma` vêm da GUI |
+| `transmitir(sinal, media, sigma)` | Soma a cada amostra um ruído gaussiano `n(x, σ)` via `random.gauss`, conforme exigido no enunciado. `media` e `sigma` vêm da GUI |
 
 ### 3.5 `interface_gui.py` (GTK 3, **não pode ser terminal**)
 Janela com:
@@ -177,11 +178,13 @@ A ordem abaixo permite testar cada etapa isoladamente (sempre teste TX → RX se
 
 ```bash
 sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0   # GTK no Linux
-pip install numpy matplotlib
+pip install matplotlib
 python3 simulador.py
 
-
-~/miniconda3/bin/python3 simulador.py
+# Ambiente local deste checkout:
+source .venv/bin/activate
+python simulador.py
+python testes.py
 ```
 ---
 

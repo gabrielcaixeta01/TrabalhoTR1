@@ -24,14 +24,15 @@ Funcionalidades implementadas:
 
 ```
 TrabalhoTR1/
-├── Simulador.py          # Ponto de entrada principal — orquestra TX → meio → RX
+├── simulador.py          # Ponto de entrada principal — orquestra TX → meio → RX
+├── Simulador.py          # Compatibilidade para executar pelo nome antigo
 ├── camada_aplicacao.py   # Camada de aplicação: texto ↔ bits (UTF-8)
 ├── camada_enlace.py      # Camada de enlace: enquadramento, detecção e correção
 ├── camada_fisica.py      # Camada física: modulações banda-base e por portadora
 ├── meio_comunicacao.py   # Canal: adiciona ruído gaussiano ao sinal em Volts
 ├── interface_gui.py      # Interface gráfica GTK 3 com gráficos matplotlib
 ├── testes.py             # Testes automatizados (não requer GTK)
-├── requirements.txt      # Dependências Python: matplotlib, PyGObject
+├── requirements.txt      # Dependência Python instalada no venv: matplotlib
 └── relatorio/
     └── RelatórioTR1 (provisório).pdf
 ```
@@ -56,7 +57,7 @@ python3 --version
 
 ### Bibliotecas do sistema (GTK 3)
 
-Obrigatórias para a interface gráfica. Sem elas, `Simulador.py` não abre:
+Obrigatórias para a interface gráfica. Sem elas, `simulador.py` não abre:
 
 ```bash
 sudo apt update
@@ -74,7 +75,6 @@ Listadas em `requirements.txt`:
 
 ```
 matplotlib
-PyGObject
 ```
 
 > **Nota sobre numpy:** O `README.md` original menciona numpy, mas nenhum arquivo de código-fonte importa numpy diretamente. O `requirements.txt` também não o lista. A instalação de numpy **não é obrigatória** para executar o projeto.
@@ -87,8 +87,8 @@ PyGObject
 |---|---|---|
 | `PyGObject` (gi) | Interface gráfica GTK 3 em `interface_gui.py` | Sim, para a GUI |
 | `matplotlib` | Gráficos dos sinais embutidos na GUI (`FigureCanvas`) | Sim, para a GUI |
-| `threading` | Threads TX e RX em `Simulador.py` | Stdlib Python |
-| `queue` | Canal de comunicação entre threads em `Simulador.py` | Stdlib Python |
+| `threading` | Threads TX e RX em `simulador.py` | Stdlib Python |
+| `queue` | Canal de comunicação entre threads em `simulador.py` | Stdlib Python |
 | `math` | Funções trigonométricas em `camada_fisica.py` | Stdlib Python |
 | `random` | Gerador de ruído gaussiano em `meio_comunicacao.py` | Stdlib Python |
 
@@ -108,21 +108,23 @@ sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0
 Recomenda-se usar um ambiente virtual para não poluir o sistema:
 
 ```bash
-# Criar e ativar ambiente virtual (opcional mas recomendado)
-python3 -m venv .venv
+# Criar ambiente virtual com acesso ao PyGObject do sistema
+python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
 
-# Instalar dependências listadas em requirements.txt
+# Instalar dependências Python listadas no requirements.txt
 pip install -r requirements.txt
 ```
+
+Neste checkout local, o ambiente `.venv` já foi criado com `uv` e está pronto para uso.
 
 Se não usar ambiente virtual, instalar globalmente:
 
 ```bash
-pip install matplotlib PyGObject
+pip install matplotlib
 ```
 
-> **Atenção:** `PyGObject` via pip pode exigir que as bibliotecas do sistema (`python3-gi`, `gir1.2-gtk-3.0`) já estejam instaladas antes do `pip install`.
+> **Atenção:** PyGObject/GTK deve ser instalado pelo gerenciador de pacotes do sistema. O `requirements.txt` não tenta instalar PyGObject via pip.
 
 ### 5.3 Entrar no diretório do projeto
 
@@ -137,7 +139,7 @@ cd TrabalhoTR1
 ### 6.1 Executar a interface gráfica (modo principal)
 
 ```bash
-python3 Simulador.py
+python3 simulador.py
 ```
 
 Isso abrirá a janela GTK com o simulador completo.
@@ -161,20 +163,21 @@ A saída esperada é uma lista de linhas `[PASS]` ou `[FAIL]` seguida de `RESULT
 sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0
 
 # 2. Instalar dependências Python
-pip install matplotlib PyGObject
+.venv/bin/python -m pip install -r requirements.txt
 
 # 3. Rodar a interface gráfica
-python3 Simulador.py
+.venv/bin/python simulador.py
 
 # OU: rodar apenas os testes (sem GTK)
-python3 testes.py
+.venv/bin/python testes.py
 ```
 
 ---
 
 ## 8. Explicação do Ponto de Entrada
 
-O ponto de entrada é o arquivo **`Simulador.py`** (com S maiúsculo).
+O ponto de entrada principal é o arquivo **`simulador.py`**. O arquivo
+**`Simulador.py`** permanece como compatibilidade para quem executar o nome antigo.
 
 O bloco `if __name__ == "__main__":` no final do arquivo executa:
 
@@ -197,7 +200,7 @@ Ao clicar em **"Transmitir"** na interface gráfica, o seguinte pipeline é exec
 CONFIGURAÇÃO DA GUI
         |
         v
-[Simulador.py: executar_simulacao(config)]
+[simulador.py: executar_simulacao(config)]
         |
         |-- THREAD TX (threading.Thread) --------------------
         |   1. texto → bits (camada_aplicacao)
@@ -244,27 +247,8 @@ Se usar ambiente virtual, o `gi` do sistema pode não ser visível. Nesse caso:
 python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
 pip install matplotlib
-python3 Simulador.py
-```
-
----
-
-### Erro: `ModuleNotFoundError: No module named 'simulador'`
-
-**Causa:** `interface_gui.py` contém `import simulador` (minúsculo), mas o arquivo no disco é `Simulador.py` (maiúsculo). Em Linux (sistema de arquivos case-sensitive), essa diferença importa.
-
-**Solução:** Criar um link simbólico ou renomear o arquivo para `simulador.py`:
-
-```bash
-# Opção 1: criar link simbólico
-ln -s Simulador.py simulador.py
-
-# Opção 2: renomear (não altera o conteúdo)
-mv Simulador.py simulador.py
 python3 simulador.py
 ```
-
-> **Observação para o avaliador:** O README original menciona `python3 simulador.py` (minúsculo). Se o arquivo no repositório estiver com S maiúsculo (`Simulador.py`), será necessário renomear ou criar o link antes de rodar em Linux.
 
 ---
 
@@ -310,9 +294,9 @@ python3 testes.py
 
 ## 11. Observações Importantes para o Avaliador/Professor (Linux)
 
-1. **Nome do arquivo de entrada (`Simulador.py` vs `simulador.py`):** O arquivo no disco é `Simulador.py` (maiúsculo), mas `interface_gui.py` faz `import simulador` (minúsculo). Em Linux, isso causa `ModuleNotFoundError`. Renomear para `simulador.py` ou criar um link simbólico resolve o problema. Ver seção 10.
+1. **Nome do arquivo de entrada:** use `simulador.py` como ponto de entrada principal. `Simulador.py` existe apenas como compatibilidade com o nome antigo.
 
-2. **Requisito de display gráfico:** O simulador abre uma janela GTK 3. É obrigatório ter um servidor gráfico disponível (X11 ou Wayland) para rodar `Simulador.py`. Para ambientes sem display, usar `python3 testes.py`.
+2. **Requisito de display gráfico:** O simulador abre uma janela GTK 3. É obrigatório ter um servidor gráfico disponível (X11 ou Wayland) para rodar `simulador.py`. Para ambientes sem display, usar `python3 testes.py`.
 
 3. **PyGObject via sistema, não pip:** Em muitas distribuições Linux, `PyGObject` funciona melhor quando instalado via `apt` (`python3-gi`) do que via `pip`. Se houver conflito, criar o ambiente virtual com `--system-site-packages` (ver seção 10).
 
@@ -336,7 +320,7 @@ python3 testes.py
 - Dependências reais identificadas no código-fonte (nenhuma delas é numpy)
 - Passo a passo de instalação com ambiente virtual opcional
 - Comandos exatos para rodar a GUI e os testes
-- Explicação detalhada do ponto de entrada (`Simulador.py`) e do bloco `__main__`
+- Explicação detalhada do ponto de entrada (`simulador.py`) e do bloco `__main__`
 - Diagrama do fluxo completo TX → canal → RX com as duas threads
 - Cinco erros comuns com causa e solução específica
-- Oito observações críticas para execução em Linux, incluindo a divergência de capitalização `Simulador.py` vs `import simulador`
+- Observações críticas para execução em Linux e dependências gráficas
