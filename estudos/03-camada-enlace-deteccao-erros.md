@@ -78,7 +78,7 @@ No receptor, soma-se tudo (dados + checksum) do mesmo jeito; o resultado deve da
 ### No projeto
 
 ```python
-def _soma_complemento1(palavras):
+def soma_complemento1(palavras):
     soma = 0
     for p in palavras:
         soma += p
@@ -86,13 +86,13 @@ def _soma_complemento1(palavras):
     return soma
 
 def adicionar_checksum(bits):
-    soma = _soma_complemento1(_bits_para_palavras16(bits))
+    soma = soma_complemento1(_bits_para_palavras16(bits))
     checksum = (~soma) & 0xFFFF                  # complemento de 1
     return bits + _bytes_para_bits([checksum >> 8, checksum & 0xFF])
 
 def verificar_checksum(bits):
     payload = bits[:-16]
-    total = _soma_complemento1(_bits_para_palavras16(payload) +
+    total = soma_complemento1(_bits_para_palavras16(payload) +
                                _bits_para_palavras16(bits[-16:]))
     return payload, total == 0xFFFF              # deve saturar em 0xFFFF
 ```
@@ -127,14 +127,14 @@ rajadas maiores (probabilidade de passar ≈ `2⁻³²`). É por isso que é o p
 ### No projeto (implementação refletida, bit a bit, **sem zlib**)
 
 ```python
-_POLI_CRC32_REFLETIDO = 0xEDB88320   # forma refletida do 0x04C11DB7
+POLI_CRC32_REFLETIDO = 0xEDB88320   # forma refletida do 0x04C11DB7
 
 def _calcular_crc32(bits):
     crc = 0xFFFFFFFF                  # registrador inicial (padrão)
     for i in range(0, len(bits), 8):
         for bit in reversed(bits[i:i+8]):    # processa LSB->MSB de cada byte
             if (crc ^ bit) & 1:
-                crc = (crc >> 1) ^ _POLI_CRC32_REFLETIDO   # "subtrai" o gerador
+                crc = (crc >> 1) ^ POLI_CRC32_REFLETIDO   # "subtrai" o gerador
             else:
                 crc >>= 1
     return crc ^ 0xFFFFFFFF           # XOR final (padrão)

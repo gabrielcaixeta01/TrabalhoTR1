@@ -17,12 +17,12 @@ try:
     from gi.repository import Gtk
     from matplotlib.backends.backend_gtk3agg import (
         FigureCanvasGTK3Agg as FigureCanvas)
-    _BACKEND = "gtk"
+    BACKEND = "gtk"
 except Exception:
     import tkinter as tk
     from tkinter import ttk
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg as FigureCanvas
-    _BACKEND = "tk"
+    BACKEND = "tk"
 
 from matplotlib.figure import Figure
 import simulador
@@ -48,19 +48,19 @@ MAX_AMOSTRAS_GRAFICO = 4000
 MAX_BITS_TEXTO = 2048
 
 
-def _bits_str(bits):
+def bits_str(bits):
     if bits is None:
         return "-"
-    s = "".join(str(b) for b in bits[:MAX_BITS_TEXTO])
+    texto = "".join(str(b) for b in bits[:MAX_BITS_TEXTO])
     if len(bits) > MAX_BITS_TEXTO:
-        s += f"... ({len(bits)} bits no total)"
-    return s
+        texto += f"... ({len(bits)} bits no total)"
+    return texto
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # IMPLEMENTAÇÃO GTK 3  (usada no Linux — requisito do trabalho)
 # ═════════════════════════════════════════════════════════════════════════════
-if _BACKEND == "gtk":
+if BACKEND == "gtk":
 
     class JanelaSimulador(Gtk.Window):
         """Janela principal do simulador (GTK 3)."""
@@ -74,18 +74,18 @@ if _BACKEND == "gtk":
             raiz.set_border_width(8)
             self.add(raiz)
 
-            raiz.pack_start(self._montar_painel_config(), False, False, 0)
-            raiz.pack_start(self._montar_painel_resultados(), True, True, 0)
+            raiz.pack_start(self.montar_painel_config(), False, False, 0)
+            raiz.pack_start(self.montar_painel_resultados(), True, True, 0)
 
         # ── Construção ────────────────────────────────────────────────────
 
-        def _montar_painel_config(self):
+        def montar_painel_config(self):
             grade = Gtk.Grid(column_spacing=6, row_spacing=6)
             linha = 0
 
             def rotulo(texto):
-                lbl = Gtk.Label(label=texto, xalign=0)
-                return lbl
+                label = Gtk.Label(label=texto, xalign=0)
+                return label
 
             def adicionar(widget_rotulo, widget):
                 nonlocal linha
@@ -100,19 +100,19 @@ if _BACKEND == "gtk":
             self.spin_quadro.set_value(8)
             adicionar("Tam. máx. de quadro (bytes):", self.spin_quadro)
 
-            self.combo_enq = self._novo_combo(OPCOES_ENQUADRAMENTO, 2)
+            self.combo_enq = self.novo_combo(OPCOES_ENQUADRAMENTO, 2)
             adicionar("Enquadramento:", self.combo_enq)
 
-            self.combo_det = self._novo_combo(OPCOES_DETECCAO, 3)
+            self.combo_det = self.novo_combo(OPCOES_DETECCAO, 3)
             adicionar("Detecção de erros:", self.combo_det)
 
-            self.combo_cor = self._novo_combo(OPCOES_CORRECAO, 1)
+            self.combo_cor = self.novo_combo(OPCOES_CORRECAO, 1)
             adicionar("Correção de erros:", self.combo_cor)
 
-            self.combo_dig = self._novo_combo(OPCOES_MOD_DIGITAL, 0)
+            self.combo_dig = self.novo_combo(OPCOES_MOD_DIGITAL, 0)
             adicionar("Modulação digital:", self.combo_dig)
 
-            self.combo_port = self._novo_combo(OPCOES_MOD_PORTADORA, 3)
+            self.combo_port = self.novo_combo(OPCOES_MOD_PORTADORA, 3)
             adicionar("Modulação por portadora:", self.combo_port)
 
             self.spin_media = Gtk.SpinButton.new_with_range(-2.0, 2.0, 0.01)
@@ -126,7 +126,7 @@ if _BACKEND == "gtk":
             adicionar("Ruído - desvio σ (V):", self.spin_sigma)
 
             botao = Gtk.Button(label="Transmitir")
-            botao.connect("clicked", self._ao_transmitir)
+            botao.connect("clicked", self.ao_transmitir)
             grade.attach(botao, 0, linha, 2, 1)
             linha += 1
 
@@ -136,7 +136,7 @@ if _BACKEND == "gtk":
             grade.attach(self.lbl_status, 0, linha, 2, 1)
             return grade
 
-        def _novo_combo(self, opcoes, indice_padrao):
+        def novo_combo(self, opcoes, indice_padrao):
             combo = Gtk.ComboBoxText()
             for rotulo, _ in opcoes:
                 combo.append_text(rotulo)
@@ -145,35 +145,35 @@ if _BACKEND == "gtk":
             return combo
 
         @staticmethod
-        def _valor_combo(combo):
+        def valor_combo(combo):
             return combo._opcoes[combo.get_active()][1]
 
-        def _montar_painel_resultados(self):
+        def montar_painel_resultados(self):
             notebook = Gtk.Notebook()
 
-            self.txt_tx = self._nova_caixa_texto()
+            self.txt_tx = self.nova_caixa_texto()
             self.fig_tx = Figure(figsize=(7, 4))
             self.canvas_tx = FigureCanvas(self.fig_tx)
             notebook.append_page(
-                self._aba(self.txt_tx, self.canvas_tx),
+                self.montar_aba(self.txt_tx, self.canvas_tx),
                 Gtk.Label(label="Transmissor (Tx)"))
 
-            self.txt_rx = self._nova_caixa_texto()
+            self.txt_rx = self.nova_caixa_texto()
             self.fig_rx = Figure(figsize=(7, 4))
             self.canvas_rx = FigureCanvas(self.fig_rx)
             notebook.append_page(
-                self._aba(self.txt_rx, self.canvas_rx),
+                self.montar_aba(self.txt_rx, self.canvas_rx),
                 Gtk.Label(label="Receptor (Rx)"))
             return notebook
 
         @staticmethod
-        def _nova_caixa_texto():
+        def nova_caixa_texto():
             tv = Gtk.TextView(editable=False, monospace=True)
             tv.set_wrap_mode(Gtk.WrapMode.CHAR)
             return tv
 
         @staticmethod
-        def _aba(textview, canvas):
+        def montar_aba(textview, canvas):
             caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             rolagem = Gtk.ScrolledWindow()
             rolagem.set_min_content_height(260)
@@ -184,41 +184,41 @@ if _BACKEND == "gtk":
 
         # ── Lógica ────────────────────────────────────────────────────────
 
-        def _ler_config(self):
+        def ler_config(self):
             return {
                 "texto": self.entrada_texto.get_text(),
                 "tam_max_quadro": int(self.spin_quadro.get_value()),
-                "enquadramento": self._valor_combo(self.combo_enq),
-                "deteccao": self._valor_combo(self.combo_det),
-                "correcao": self._valor_combo(self.combo_cor),
-                "mod_digital": self._valor_combo(self.combo_dig),
-                "mod_portadora": self._valor_combo(self.combo_port),
+                "enquadramento": self.valor_combo(self.combo_enq),
+                "deteccao": self.valor_combo(self.combo_det),
+                "correcao": self.valor_combo(self.combo_cor),
+                "mod_digital": self.valor_combo(self.combo_dig),
+                "mod_portadora": self.valor_combo(self.combo_port),
                 "ruido_media": self.spin_media.get_value(),
                 "ruido_sigma": self.spin_sigma.get_value(),
             }
 
-        def _ao_transmitir(self, _botao):
-            config = self._ler_config()
+        def ao_transmitir(self, _botao):
+            config = self.ler_config()
             if not config["texto"]:
                 self.lbl_status.set_text("Digite um texto para transmitir.")
                 return
             try:
-                r = simulador.executar_simulacao(config)
+                resultado = simulador.executar_simulacao(config)
             except ValueError as erro:
                 self.lbl_status.set_text(f"Erro: {erro}")
                 return
 
             texto_tx = (
                 f"TEXTO DE ENTRADA:\n{config['texto']}\n\n"
-                f"SAÍDA DE BITS - APLICAÇÃO ({len(r['tx_bits_aplicacao'])} bits):\n"
-                f"{_bits_str(r['tx_bits_aplicacao'])}\n\n"
-                f"SAÍDA DE BITS - ENLACE/quadros ({len(r['tx_bits_enlace'])} bits):\n"
-                f"{_bits_str(r['tx_bits_enlace'])}\n"
+                f"SAÍDA DE BITS - APLICAÇÃO ({len(resultado['tx_bits_aplicacao'])} bits):\n"
+                f"{bits_str(resultado['tx_bits_aplicacao'])}\n\n"
+                f"SAÍDA DE BITS - ENLACE/quadros ({len(resultado['tx_bits_enlace'])} bits):\n"
+                f"{bits_str(resultado['tx_bits_enlace'])}\n"
             )
             self.txt_tx.get_buffer().set_text(texto_tx)
-            self._plotar(self.fig_tx, self.canvas_tx,
-                         ("Sinal banda-base (Tx)", r["tx_sinal_banda_base"]),
-                         ("Sinal transmitido ao meio (Tx)", r["tx_sinal_transmitido"]))
+            self.plotar(self.fig_tx, self.canvas_tx,
+                        ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
+                        ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]))
 
             linhas_quadros = "\n".join(
                 f"  Quadro {q['quadro']}: "
@@ -226,33 +226,34 @@ if _BACKEND == "gtk":
                 + (f", {q['corrigidos']} bit(s) corrigido(s) por Hamming"
                    if config["correcao"] == "hamming" else "")
                 + (", ERRO DUPLO detectado" if q["erro_duplo"] else "")
-                for q in r["rx_relatorio_quadros"]) or "  (nenhum quadro recuperado)"
+                for q in resultado["rx_relatorio_quadros"]) or "  (nenhum quadro recuperado)"
             texto_rx = (
                 f"SAÍDA DE BITS - FÍSICA/demodulados "
-                f"({len(r['rx_bits_fisica'])} bits):\n"
-                f"{_bits_str(r['rx_bits_fisica'])}\n\n"
+                f"({len(resultado['rx_bits_fisica'])} bits):\n"
+                f"{bits_str(resultado['rx_bits_fisica'])}\n\n"
                 f"RELATÓRIO DOS QUADROS (enlace):\n{linhas_quadros}\n\n"
-                f"SAÍDA DE BITS - APLICAÇÃO ({len(r['rx_bits_aplicacao'])} bits):\n"
-                f"{_bits_str(r['rx_bits_aplicacao'])}\n\n"
-                f"SAÍDA DE TEXTO:\n{r['rx_texto']}\n"
+                f"SAÍDA DE BITS - APLICAÇÃO ({len(resultado['rx_bits_aplicacao'])} bits):\n"
+                f"{bits_str(resultado['rx_bits_aplicacao'])}\n\n"
+                f"SAÍDA DE TEXTO:\n{resultado['rx_texto']}\n"
             )
             self.txt_rx.get_buffer().set_text(texto_rx)
-            self._plotar(self.fig_rx, self.canvas_rx,
-                         ("Sinal recebido com ruído (Rx)", r["rx_sinal_recebido"]),
-                         ("Banda-base reconstruído (Rx)", r["rx_sinal_banda_base"]))
+            self.plotar(self.fig_rx, self.canvas_rx,
+                        ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
+                        ("Banda-base reconstruído (Rx)", resultado["rx_sinal_banda_base"]))
 
-            ok = (r["rx_texto"] == config["texto"])
-            ps, pr = r["potencia_sinal_w"], r["potencia_ruido_w"]
+            ok = (resultado["rx_texto"] == config["texto"])
+            pot_sinal = resultado["potencia_sinal_w"]
+            pot_ruido = resultado["potencia_ruido_w"]
             self.lbl_status.set_text(
-                f"Potência do sinal: {ps:.3f} W | do ruído: {pr:.4f} W\n"
+                f"Potência do sinal: {pot_sinal:.3f} W | do ruído: {pot_ruido:.4f} W\n"
                 f"Texto recuperado {'CORRETAMENTE' if ok else 'COM DIFERENÇAS'}.")
 
         @staticmethod
-        def _plotar(figura, canvas, *series):
+        def plotar(figura, canvas, *series):
             figura.clear()
-            n = len(series)
+            num_series = len(series)
             for k, (titulo, sinal) in enumerate(series, start=1):
-                eixo = figura.add_subplot(n, 1, k)
+                eixo = figura.add_subplot(num_series, 1, k)
                 eixo.plot(sinal[:MAX_AMOSTRAS_GRAFICO], linewidth=0.8)
                 eixo.set_title(titulo, fontsize=9)
                 eixo.set_ylabel("V", fontsize=8)
@@ -282,12 +283,12 @@ else:
             raiz = ttk.Frame(self, padding=8)
             raiz.pack(fill=tk.BOTH, expand=True)
 
-            self._montar_painel_config(raiz)
-            self._montar_painel_resultados(raiz)
+            self.montar_painel_config(raiz)
+            self.montar_painel_resultados(raiz)
 
         # ── Construção ────────────────────────────────────────────────────
 
-        def _montar_painel_config(self, parent):
+        def montar_painel_config(self, parent):
             frame = ttk.LabelFrame(parent, text="Configuração", padding=6)
             frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
 
@@ -308,19 +309,19 @@ else:
             self.spin_quadro.set(8)
             adicionar("Tam. máx. de quadro (bytes):", self.spin_quadro)
 
-            self.combo_enq = self._novo_combo(frame, OPCOES_ENQUADRAMENTO, 2)
+            self.combo_enq = self.novo_combo(frame, OPCOES_ENQUADRAMENTO, 2)
             adicionar("Enquadramento:", self.combo_enq)
 
-            self.combo_det = self._novo_combo(frame, OPCOES_DETECCAO, 3)
+            self.combo_det = self.novo_combo(frame, OPCOES_DETECCAO, 3)
             adicionar("Detecção de erros:", self.combo_det)
 
-            self.combo_cor = self._novo_combo(frame, OPCOES_CORRECAO, 1)
+            self.combo_cor = self.novo_combo(frame, OPCOES_CORRECAO, 1)
             adicionar("Correção de erros:", self.combo_cor)
 
-            self.combo_dig = self._novo_combo(frame, OPCOES_MOD_DIGITAL, 0)
+            self.combo_dig = self.novo_combo(frame, OPCOES_MOD_DIGITAL, 0)
             adicionar("Modulação digital:", self.combo_dig)
 
-            self.combo_port = self._novo_combo(frame, OPCOES_MOD_PORTADORA, 3)
+            self.combo_port = self.novo_combo(frame, OPCOES_MOD_PORTADORA, 3)
             adicionar("Modulação por portadora:", self.combo_port)
 
             self.spin_media = ttk.Spinbox(
@@ -333,7 +334,7 @@ else:
             self.spin_sigma.set("0.10")
             adicionar("Ruído - desvio σ (V):", self.spin_sigma)
 
-            ttk.Button(frame, text="Transmitir", command=self._ao_transmitir).grid(
+            ttk.Button(frame, text="Transmitir", command=self.ao_transmitir).grid(
                 row=linha, column=0, columnspan=2, pady=10)
             linha += 1
 
@@ -341,7 +342,7 @@ else:
                 frame, text="", wraplength=220, justify="left", anchor="nw")
             self.lbl_status.grid(row=linha, column=0, columnspan=2, sticky="w")
 
-        def _novo_combo(self, parent, opcoes, indice_padrao):
+        def novo_combo(self, parent, opcoes, indice_padrao):
             valores = [r for r, _ in opcoes]
             combo = ttk.Combobox(parent, values=valores, state="readonly", width=22)
             combo.set(valores[indice_padrao])
@@ -349,22 +350,22 @@ else:
             return combo
 
         @staticmethod
-        def _valor_combo(combo):
+        def valor_combo(combo):
             return combo._opcoes[combo.current()][1]
 
-        def _montar_painel_resultados(self, parent):
+        def montar_painel_resultados(self, parent):
             notebook = ttk.Notebook(parent)
             notebook.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
             tab_tx = ttk.Frame(notebook)
-            self.txt_tx, self.fig_tx, self.canvas_tx = self._criar_aba(tab_tx)
+            self.txt_tx, self.fig_tx, self.canvas_tx = self.criarmontar_aba(tab_tx)
             notebook.add(tab_tx, text="Transmissor (Tx)")
 
             tab_rx = ttk.Frame(notebook)
-            self.txt_rx, self.fig_rx, self.canvas_rx = self._criar_aba(tab_rx)
+            self.txt_rx, self.fig_rx, self.canvas_rx = self.criarmontar_aba(tab_rx)
             notebook.add(tab_rx, text="Receptor (Rx)")
 
-        def _criar_aba(self, parent):
+        def criarmontar_aba(self, parent):
             txt_frame = ttk.Frame(parent)
             txt_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -384,41 +385,41 @@ else:
 
         # ── Lógica ────────────────────────────────────────────────────────
 
-        def _ler_config(self):
+        def ler_config(self):
             return {
                 "texto": self.entrada_texto.get(),
                 "tam_max_quadro": int(self.spin_quadro.get()),
-                "enquadramento": self._valor_combo(self.combo_enq),
-                "deteccao": self._valor_combo(self.combo_det),
-                "correcao": self._valor_combo(self.combo_cor),
-                "mod_digital": self._valor_combo(self.combo_dig),
-                "mod_portadora": self._valor_combo(self.combo_port),
+                "enquadramento": self.valor_combo(self.combo_enq),
+                "deteccao": self.valor_combo(self.combo_det),
+                "correcao": self.valor_combo(self.combo_cor),
+                "mod_digital": self.valor_combo(self.combo_dig),
+                "mod_portadora": self.valor_combo(self.combo_port),
                 "ruido_media": float(self.spin_media.get()),
                 "ruido_sigma": float(self.spin_sigma.get()),
             }
 
-        def _ao_transmitir(self):
-            config = self._ler_config()
+        def ao_transmitir(self):
+            config = self.ler_config()
             if not config["texto"]:
                 self.lbl_status.config(text="Digite um texto para transmitir.")
                 return
             try:
-                r = simulador.executar_simulacao(config)
+                resultado = simulador.executar_simulacao(config)
             except ValueError as erro:
                 self.lbl_status.config(text=f"Erro: {erro}")
                 return
 
             texto_tx = (
                 f"TEXTO DE ENTRADA:\n{config['texto']}\n\n"
-                f"SAÍDA DE BITS - APLICAÇÃO ({len(r['tx_bits_aplicacao'])} bits):\n"
-                f"{_bits_str(r['tx_bits_aplicacao'])}\n\n"
-                f"SAÍDA DE BITS - ENLACE/quadros ({len(r['tx_bits_enlace'])} bits):\n"
-                f"{_bits_str(r['tx_bits_enlace'])}\n"
+                f"SAÍDA DE BITS - APLICAÇÃO ({len(resultado['tx_bits_aplicacao'])} bits):\n"
+                f"{bits_str(resultado['tx_bits_aplicacao'])}\n\n"
+                f"SAÍDA DE BITS - ENLACE/quadros ({len(resultado['tx_bits_enlace'])} bits):\n"
+                f"{bits_str(resultado['tx_bits_enlace'])}\n"
             )
-            self._set_texto(self.txt_tx, texto_tx)
-            self._plotar(self.fig_tx, self.canvas_tx,
-                         ("Sinal banda-base (Tx)", r["tx_sinal_banda_base"]),
-                         ("Sinal transmitido ao meio (Tx)", r["tx_sinal_transmitido"]))
+            self.set_texto(self.txt_tx, texto_tx)
+            self.plotar(self.fig_tx, self.canvas_tx,
+                        ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
+                        ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]))
 
             linhas_quadros = "\n".join(
                 f"  Quadro {q['quadro']}: "
@@ -426,40 +427,41 @@ else:
                 + (f", {q['corrigidos']} bit(s) corrigido(s) por Hamming"
                    if config["correcao"] == "hamming" else "")
                 + (", ERRO DUPLO detectado" if q["erro_duplo"] else "")
-                for q in r["rx_relatorio_quadros"]) or "  (nenhum quadro recuperado)"
+                for q in resultado["rx_relatorio_quadros"]) or "  (nenhum quadro recuperado)"
             texto_rx = (
                 f"SAÍDA DE BITS - FÍSICA/demodulados "
-                f"({len(r['rx_bits_fisica'])} bits):\n"
-                f"{_bits_str(r['rx_bits_fisica'])}\n\n"
+                f"({len(resultado['rx_bits_fisica'])} bits):\n"
+                f"{bits_str(resultado['rx_bits_fisica'])}\n\n"
                 f"RELATÓRIO DOS QUADROS (enlace):\n{linhas_quadros}\n\n"
-                f"SAÍDA DE BITS - APLICAÇÃO ({len(r['rx_bits_aplicacao'])} bits):\n"
-                f"{_bits_str(r['rx_bits_aplicacao'])}\n\n"
-                f"SAÍDA DE TEXTO:\n{r['rx_texto']}\n"
+                f"SAÍDA DE BITS - APLICAÇÃO ({len(resultado['rx_bits_aplicacao'])} bits):\n"
+                f"{bits_str(resultado['rx_bits_aplicacao'])}\n\n"
+                f"SAÍDA DE TEXTO:\n{resultado['rx_texto']}\n"
             )
-            self._set_texto(self.txt_rx, texto_rx)
-            self._plotar(self.fig_rx, self.canvas_rx,
-                         ("Sinal recebido com ruído (Rx)", r["rx_sinal_recebido"]),
-                         ("Banda-base reconstruído (Rx)", r["rx_sinal_banda_base"]))
+            self.set_texto(self.txt_rx, texto_rx)
+            self.plotar(self.fig_rx, self.canvas_rx,
+                        ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
+                        ("Banda-base reconstruído (Rx)", resultado["rx_sinal_banda_base"]))
 
-            ok = (r["rx_texto"] == config["texto"])
-            ps, pr = r["potencia_sinal_w"], r["potencia_ruido_w"]
+            ok = (resultado["rx_texto"] == config["texto"])
+            pot_sinal = resultado["potencia_sinal_w"]
+            pot_ruido = resultado["potencia_ruido_w"]
             self.lbl_status.config(
-                text=(f"Potência do sinal: {ps:.3f} W | do ruído: {pr:.4f} W\n"
+                text=(f"Potência do sinal: {pot_sinal:.3f} W | do ruído: {pot_ruido:.4f} W\n"
                       f"Texto recuperado {'CORRETAMENTE' if ok else 'COM DIFERENÇAS'}."))
 
         @staticmethod
-        def _set_texto(widget, conteudo):
+        def set_texto(widget, conteudo):
             widget.config(state=tk.NORMAL)
             widget.delete("1.0", tk.END)
             widget.insert(tk.END, conteudo)
             widget.config(state=tk.DISABLED)
 
         @staticmethod
-        def _plotar(figura, canvas, *series):
+        def plotar(figura, canvas, *series):
             figura.clear()
-            n = len(series)
+            num_series = len(series)
             for k, (titulo, sinal) in enumerate(series, start=1):
-                eixo = figura.add_subplot(n, 1, k)
+                eixo = figura.add_subplot(num_series, 1, k)
                 eixo.plot(sinal[:MAX_AMOSTRAS_GRAFICO], linewidth=0.8)
                 eixo.set_title(titulo, fontsize=9)
                 eixo.set_ylabel("V", fontsize=8)

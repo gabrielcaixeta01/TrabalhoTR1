@@ -45,4 +45,5 @@ def potencia_media(sinal):
     na interface gráfica."""
     if not sinal:
         return 0.0
-    return sum(v * v for v in sinal) / len(sinal)
+    # P = (1/N) * soma( amostra² ) — potência sobre resistência de 1 ohm
+    return sum(amostra * amostra for amostra in sinal) / len(sinal)
