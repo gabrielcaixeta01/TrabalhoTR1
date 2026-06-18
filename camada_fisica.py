@@ -45,7 +45,10 @@ def modular_nrz_polar(bits):
     """NRZ-Polar: bit 1 -> +V constante; bit 0 -> -V constante."""
     sinal = []
     for bit in bits:
-        nivel = V if bit == 1 else -V
+        if bit == 1:
+            nivel = V
+        else:
+            nivel = -V
         sinal += [nivel] * AMOSTRAS_POR_BIT
     return sinal
 
@@ -56,7 +59,10 @@ def demodular_nrz_polar(sinal):
     bits = []
     for k in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
         media = sum(sinal[k:k + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
-        bits.append(1 if media > 0 else 0)
+        if media > 0:
+            bits.append(1)
+        else:
+            bits.append(0)
     return bits
 
 
@@ -83,7 +89,10 @@ def demodular_manchester(sinal):
     for k in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
         m1 = sum(sinal[k:k + metade]) / metade
         m2 = sum(sinal[k + metade:k + AMOSTRAS_POR_BIT]) / (AMOSTRAS_POR_BIT - metade)
-        bits.append(1 if m1 > m2 else 0)
+        if m1 > m2:
+            bits.append(1)
+        else:
+            bits.append(0)
     return bits
 
 
@@ -107,7 +116,10 @@ def demodular_bipolar(sinal):
     bits = []
     for k in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
         media = sum(sinal[k:k + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
-        bits.append(1 if abs(media) > V / 2 else 0)
+        if abs(media) > V / 2:
+            bits.append(1)
+        else:
+            bits.append(0)
     return bits
 
 
@@ -185,7 +197,10 @@ def modular_ask(bits):
     bit 0 -> ausência de portadora (0 V)."""
     sinal = []
     for bit in bits:
-        sinal += onda(V if bit == 1 else 0.0, 0.0, CICLOS_PORTADORA)
+        if bit == 1:
+            sinal += onda(V, 0.0, CICLOS_PORTADORA)
+        else:
+            sinal += onda(0.0, 0.0, CICLOS_PORTADORA)
     return sinal
 
 
@@ -196,7 +211,10 @@ def demodular_ask(sinal):
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
         i, q = correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
-        bits.append(1 if math.hypot(i, q) > V / 2 else 0)
+        if math.hypot(i, q) > V / 2:
+            bits.append(1)
+        else:
+            bits.append(0)
     return bits
 
 
@@ -207,7 +225,10 @@ def modular_fsk(bits):
     f0, f1 = CICLOS_FSK
     sinal = []
     for bit in bits:
-        sinal += onda(V, 0.0, f1 if bit == 1 else f0)
+        if bit == 1:
+            sinal += onda(V, 0.0, f1)
+        else:
+            sinal += onda(V, 0.0, f0)
     return sinal
 
 
@@ -222,7 +243,10 @@ def demodular_fsk(sinal):
         simbolo = sinal[k:k + N]
         e0 = math.hypot(*correlacionar(simbolo, f0))   # energia em f1
         e1 = math.hypot(*correlacionar(simbolo, f1))   # energia em f2
-        bits.append(1 if e1 > e0 else 0)
+        if e1 > e0:
+            bits.append(1)
+        else:
+            bits.append(0)
     return bits
 
 

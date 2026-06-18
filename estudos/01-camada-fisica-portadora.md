@@ -63,9 +63,15 @@ implementam exatamente a fórmula acima:
 
 ```python
 def onda(i, q, ciclos):
-    # gera s(t) = I·cos(2π·f·t) − Q·sen(2π·f·t)
+    # fórmula: s(t) = I·cos(2π·f·t) − Q·sen(2π·f·t)
+    # i e q são as coordenadas do ponto na constelação escolhido pelos bits
+    N = AMOSTRAS_POR_SIMBOLO
     for n in range(N):
+        # n vai de 0 a N-1; n/N é a fração do símbolo percorrida (0 a ~1)
+        # multiplicar por ciclos converte para "quantos ciclos completos já foram"
+        # multiplicar por 2π converte para radianos → ângulo da portadora nessa amostra
         angulo = 2 * math.pi * ciclos * n / N
+        # aplica a fórmula I/Q: I escala o cosseno, Q escala o seno (com sinal negativo)
         amostras.append(i * math.cos(angulo) - q * math.sin(angulo))
 ```
 
@@ -78,18 +84,26 @@ conversor serial→paralelo, associação de fase ao símbolo, canais I e Q, ger
 
 ```python
 def correlacionar(simbolo, ciclos):
+    N = len(simbolo)
+    soma_cos = 0.0
+    soma_sen = 0.0
+    # enumerate dá (n, amostra): n é o índice, amostra é o valor em Volts
     for n, amostra in enumerate(simbolo):
         angulo = 2 * math.pi * ciclos * n / N
-        soma_cos += amostra * math.cos(angulo)
-        soma_sen += amostra * math.sin(angulo)
+        # produto ponto a ponto: multiplica o sinal recebido pela portadora de referência
+        # somar todos os produtos é o "produto interno" (correlação / integral discreta)
+        soma_cos += amostra * math.cos(angulo)   # projeta sobre o eixo I
+        soma_sen += amostra * math.sin(angulo)   # projeta sobre o eixo Q
+    # 2/N normaliza: sem isso a soma cresceria com N e não voltaria à amplitude original
     i =  2/N * soma_cos
-    q = -2/N * soma_sen
+    q = -2/N * soma_sen   # sinal negativo porque a fórmula usa −Q·sen (ver onda())
     return i, q
 ```
 
-**Por que funciona:** `cos` e `sen` são ortogonais ao longo de um número inteiro de ciclos.
-Multiplicar o sinal recebido por `cos(ωc·t)` e somar (= produto interno / integral) "filtra" só a
-componente I; o mesmo com `−sen` filtra Q. O fator `2/N` é a normalização que devolve a amplitude original.
+**Por que funciona:** `cos` e `sen` são ortogonais ao longo de um número inteiro de ciclos —
+`soma( cos(ωt)·sen(ωt) ) = 0` para ciclos completos. Por isso multiplicar por `cos` só "enxerga" I
+e multiplicar por `sen` só "enxerga" Q: cada eixo fica isolado. O fator `2/N` é a normalização
+que devolve a amplitude original (`soma( cos²(ωt) ) = N/2` para ciclos completos, logo `2/N · N/2 = 1`).
 É por isso que `CICLOS_PORTADORA = 4` precisa ser **inteiro**: garante ciclos completos por símbolo
 e mantém a ortogonalidade.
 
@@ -108,16 +122,25 @@ explicitamente): qualquer ruído que aumente a amplitude do "0" ou diminua a do 
 ```python
 def modular_ask(bits):
     for bit in bits:
-        sinal += onda(V if bit == 1 else 0.0, 0.0, CICLOS_PORTADORA)  # I=V ou 0, Q=0
+        if bit == 1:
+            sinal += onda(V, 0.0, CICLOS_PORTADORA)   # I=V, Q=0 → portadora ligada
+        else:
+            sinal += onda(0.0, 0.0, CICLOS_PORTADORA) # I=0, Q=0 → portadora desligada (silêncio)
 ```
 
-Demodulação: mede a amplitude `√(I²+Q²)` de cada símbolo e compara com o **limiar V/2**
-(meio do caminho entre 0 e V):
+Demodulação: `correlacionar` devolve `(I, Q)`; a amplitude do símbolo é `√(I² + Q²)` — a distância
+do ponto à origem no plano I/Q. Compara com o **limiar V/2** (meio do caminho entre 0 e V):
 
 ```python
 def demodular_ask(sinal):
     i, q = correlacionar(simbolo, CICLOS_PORTADORA)
-    bits.append(1 if math.hypot(i, q) > V/2 else 0)
+    # math.hypot(i, q) = √(i² + q²) = amplitude do símbolo recebido
+    # se amplitude > V/2 → estava mais perto de V → bit 1
+    # se amplitude ≤ V/2 → estava mais perto de 0 → bit 0
+    if math.hypot(i, q) > V / 2:
+        bits.append(1)
+    else:
+        bits.append(0)
 ```
 
 **Constelação:** dois pontos no eixo I → `(0,0)` e `(V,0)`.
@@ -140,19 +163,28 @@ inteira, não só a amplitude), mas tem **baixa eficiência espectral** porque u
 
 ```python
 def modular_fsk(bits):
-    f0, f1 = CICLOS_FSK
+    f0, f1 = CICLOS_FSK   # ex: f0=2 ciclos/símbolo, f1=4 ciclos/símbolo
     for bit in bits:
-        sinal += onda(V, 0.0, f1 if bit == 1 else f0)  # mesma amplitude, frequência diferente
+        if bit == 1:
+            sinal += onda(V, 0.0, f1)   # amplitude V, frequência alta (f1)
+        else:
+            sinal += onda(V, 0.0, f0)   # amplitude V, frequência baixa (f0)
 ```
 
-Demodulação **não-coerente por energia**: mede quanta energia o símbolo tem em `f0` e em `f1`,
-escolhe a maior. Note que aqui `correlacionar` é chamado com cada uma das duas frequências:
+Demodulação **não-coerente por energia**: correlaciona o símbolo com cada uma das duas frequências
+e mede a energia `√(I² + Q²)` em cada uma — a frequência com mais energia é a que foi transmitida:
 
 ```python
 def demodular_fsk(sinal):
-    e0 = math.hypot(*correlacionar(simbolo, f0))   # energia em f0
-    e1 = math.hypot(*correlacionar(simbolo, f1))   # energia em f1
-    bits.append(1 if e1 > e0 else 0)
+    # correlacionar projeta o símbolo sobre a portadora de f0 e de f1 separadamente
+    # math.hypot(*...) desempacota o par (i, q) e calcula √(i²+q²) = energia naquela frequência
+    e0 = math.hypot(*correlacionar(simbolo, f0))   # quanta energia em f0?
+    e1 = math.hypot(*correlacionar(simbolo, f1))   # quanta energia em f1?
+    # a frequência com mais energia é a que foi transmitida
+    if e1 > e0:
+        bits.append(1)
+    else:
+        bits.append(0)
 ```
 
 > **FSK é o único que não cabe no plano I/Q de uma só portadora**, justamente porque a frequência muda.
@@ -196,25 +228,32 @@ Constelação Gray do projeto (`_MAPA_QPSK`), com `A = V/√2`:
 | 10 | 315° | (+A, −A) |
 
 Repare que andar pelos vizinhos `00 → 01 → 11 → 10` muda **1 bit de cada vez** — isso é Gray.
-Usar `A = V/√2` mantém a amplitude total `√(I²+Q²) = V` em todos os pontos (PSK = amplitude constante).
+Usar `A = V/√2` mantém a amplitude total `√(I²+Q²) = V` em todos os pontos (PSK = amplitude constante):
+`√( (V/√2)² + (V/√2)² ) = √( V²/2 + V²/2 ) = √V² = V`.
 
 ```python
+# A = V/√2 garante que todos os pontos fiquem no círculo de raio V:
+# √(A² + A²) = √(2·A²) = A·√2 = (V/√2)·√2 = V ✓
 _A_QPSK = V / math.sqrt(2)
-_MAPA_QPSK = {(0,0): (_A,_A), (0,1): (-_A,_A), (1,1): (-_A,-_A), (1,0): (_A,-_A)}
+_MAPA_QPSK = {(0,0): (_A_QPSK, _A_QPSK), (0,1): (-_A_QPSK, _A_QPSK),
+              (1,1): (-_A_QPSK, -_A_QPSK), (1,0): (_A_QPSK, -_A_QPSK)}
 
 def modular_qpsk(bits):
-    bits = pad(bits, 2)                       # completa para nº par de bits
+    bits = pad(bits, 2)           # garante número par de bits (QPSK lê 2 por vez)
     for k in range(0, len(bits), 2):
+        # lê o dibit e busca o ponto (I, Q) correspondente na constelação
         i, q = _MAPA_QPSK[(bits[k], bits[k+1])]
         sinal += onda(i, q, CICLOS_PORTADORA)
 ```
 
-Demodulação: recupera `(I,Q)` por correlação e escolhe o **ponto da constelação mais próximo**
-(decisão de mínima distância) — é o que dá robustez ao ruído:
+Demodulação: recupera `(I, Q)` por correlação e escolhe o **ponto da constelação mais próximo**
+(decisão de mínima distância = menor `√((I_ref−I)² + (Q_ref−Q)²)`) — é o que dá robustez ao ruído:
 
 ```python
 def demodular_qpsk(sinal):
     i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+    # com ruído, (i, q) não cai exato num ponto; bits_do_ponto_mais_proximo
+    # percorre a constelação e devolve o dibit do ponto geometricamente mais perto
     bits += bits_do_ponto_mais_proximo(i, q, _MAPA_QPSK)
 ```
 
@@ -237,23 +276,31 @@ No projeto, os 4 bits são divididos: os 2 primeiros escolhem o nível de **I**,
 **Q**, ambos sobre os níveis Gray `{−3, −1, +1, +3}` escalados por `V/3`:
 
 ```python
-_NIVEIS_GRAY = {(0,0): -3, (0,1): -1, (1,1): 1, (1,0): 3}   # Gray: vizinhos diferem em 1 bit
-_ESCALA_QAM  = V / 3                                         # nível máximo = ±V
+# níveis inteiros {-3,-1,1,3} com código Gray: vizinhos diferem em 1 bit
+# (00→-3, 01→-1, 11→+1, 10→+3): andar pelos vizinhos muda 1 bit por vez
+_NIVEIS_GRAY = {(0,0): -3, (0,1): -1, (1,1): 1, (1,0): 3}
+# escala V/3 faz o nível máximo (3) virar exatamente V: 3 × (V/3) = V
+_ESCALA_QAM  = V / 3
 
 def modular_16qam(bits):
-    bits = pad(bits, 4)
+    bits = pad(bits, 4)   # garante múltiplo de 4 (16-QAM lê 4 bits por vez)
     for k in range(0, len(bits), 4):
+        # bits k,k+1 determinam o nível de I; bits k+2,k+3 determinam o nível de Q
+        # cada nível é um dos 4 valores da grade: -3,-1,+1,+3 (escalados)
         i = _NIVEIS_GRAY[(bits[k],   bits[k+1])] * _ESCALA_QAM
         q = _NIVEIS_GRAY[(bits[k+2], bits[k+3])] * _ESCALA_QAM
         sinal += onda(i, q, CICLOS_PORTADORA)
 ```
 
-Demodulação: como a constelação é um **produto cartesiano** (grade), pode-se decidir cada eixo
-separadamente — escolhe o nível `{−3,−1,1,3}` mais próximo do I medido e do Q medido:
+Demodulação: como a constelação é um **produto cartesiano** (grade), os eixos I e Q são
+independentes — decide-se cada um separadamente, escolhendo o nível `{−3,−1,1,3}·(V/3)` mais
+próximo do valor medido:
 
 ```python
 def demodular_16qam(sinal):
     i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+    # decide o eixo I e o eixo Q separadamente (possível porque a grade é produto cartesiano)
+    # cada chamada a decidir_nivel_gray devolve 2 bits (o par Gray do nível mais próximo)
     bits += decidir_nivel_gray(i) + decidir_nivel_gray(q)
 ```
 
