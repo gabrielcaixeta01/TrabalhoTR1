@@ -62,29 +62,29 @@ Toda a seção de portadora do `camada_fisica.py` é construída em cima de duas
 implementam exatamente a fórmula acima:
 
 ```python
-def _onda(c_i, c_q, ciclos):
+def onda(i, q, ciclos):
     # gera s(t) = I·cos(2π·f·t) − Q·sen(2π·f·t)
     for n in range(N):
         angulo = 2 * math.pi * ciclos * n / N
-        amostras.append(c_i * math.cos(angulo) - c_q * math.sin(angulo))
+        amostras.append(i * math.cos(angulo) - q * math.sin(angulo))
 ```
 
-`_onda` é o **modulador genérico** (compare com o "Modulador genérico PSK" das págs. 11-20 do CF-12:
+`onda` é o **modulador genérico** (compare com o "Modulador genérico PSK" das págs. 11-20 do CF-12:
 conversor serial→paralelo, associação de fase ao símbolo, canais I e Q, gerador de portadora
 `cos ωc·t` / `−sen ωc·t`, e o somador `S(t) = I(t) + Q(t)`).
 
-`_correlacionar` é o **demodulador genérico** (detecção coerente): projeta o sinal recebido sobre
+`correlacionar` é o **demodulador genérico** (detecção coerente): projeta o sinal recebido sobre
 `cos` e `−sen` de referência para recuperar `(I, Q)`:
 
 ```python
-def _correlacionar(simbolo, ciclos):
+def correlacionar(simbolo, ciclos):
     for n, amostra in enumerate(simbolo):
         angulo = 2 * math.pi * ciclos * n / N
         soma_cos += amostra * math.cos(angulo)
         soma_sen += amostra * math.sin(angulo)
-    i_comp =  2/N * soma_cos
-    q_comp = -2/N * soma_sen
-    return i_comp, q_comp
+    i =  2/N * soma_cos
+    q = -2/N * soma_sen
+    return i, q
 ```
 
 **Por que funciona:** `cos` e `sen` são ortogonais ao longo de um número inteiro de ciclos.
@@ -108,7 +108,7 @@ explicitamente): qualquer ruído que aumente a amplitude do "0" ou diminua a do 
 ```python
 def modular_ask(bits):
     for bit in bits:
-        sinal += _onda(V if bit == 1 else 0.0, 0.0, CICLOS_PORTADORA)  # I=V ou 0, Q=0
+        sinal += onda(V if bit == 1 else 0.0, 0.0, CICLOS_PORTADORA)  # I=V ou 0, Q=0
 ```
 
 Demodulação: mede a amplitude `√(I²+Q²)` de cada símbolo e compara com o **limiar V/2**
@@ -116,8 +116,8 @@ Demodulação: mede a amplitude `√(I²+Q²)` de cada símbolo e compara com o 
 
 ```python
 def demodular_ask(sinal):
-    i_c, q_c = _correlacionar(simbolo, CICLOS_PORTADORA)
-    bits.append(1 if math.hypot(i_c, q_c) > V/2 else 0)
+    i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+    bits.append(1 if math.hypot(i, q) > V/2 else 0)
 ```
 
 **Constelação:** dois pontos no eixo I → `(0,0)` e `(V,0)`.
@@ -142,16 +142,16 @@ inteira, não só a amplitude), mas tem **baixa eficiência espectral** porque u
 def modular_fsk(bits):
     f0, f1 = CICLOS_FSK
     for bit in bits:
-        sinal += _onda(V, 0.0, f1 if bit == 1 else f0)  # mesma amplitude, frequência diferente
+        sinal += onda(V, 0.0, f1 if bit == 1 else f0)  # mesma amplitude, frequência diferente
 ```
 
 Demodulação **não-coerente por energia**: mede quanta energia o símbolo tem em `f0` e em `f1`,
-escolhe a maior. Note que aqui `_correlacionar` é chamado com cada uma das duas frequências:
+escolhe a maior. Note que aqui `correlacionar` é chamado com cada uma das duas frequências:
 
 ```python
 def demodular_fsk(sinal):
-    e0 = math.hypot(*_correlacionar(simbolo, f0))   # energia em f0
-    e1 = math.hypot(*_correlacionar(simbolo, f1))   # energia em f1
+    e0 = math.hypot(*correlacionar(simbolo, f0))   # energia em f0
+    e1 = math.hypot(*correlacionar(simbolo, f1))   # energia em f1
     bits.append(1 if e1 > e0 else 0)
 ```
 
@@ -203,10 +203,10 @@ _A_QPSK = V / math.sqrt(2)
 _MAPA_QPSK = {(0,0): (_A,_A), (0,1): (-_A,_A), (1,1): (-_A,-_A), (1,0): (_A,-_A)}
 
 def modular_qpsk(bits):
-    bits = _pad(bits, 2)                       # completa para nº par de bits
+    bits = pad(bits, 2)                       # completa para nº par de bits
     for k in range(0, len(bits), 2):
-        i_c, q_c = _MAPA_QPSK[(bits[k], bits[k+1])]
-        sinal += _onda(i_c, q_c, CICLOS_PORTADORA)
+        i, q = _MAPA_QPSK[(bits[k], bits[k+1])]
+        sinal += onda(i, q, CICLOS_PORTADORA)
 ```
 
 Demodulação: recupera `(I,Q)` por correlação e escolhe o **ponto da constelação mais próximo**
@@ -214,8 +214,8 @@ Demodulação: recupera `(I,Q)` por correlação e escolhe o **ponto da constela
 
 ```python
 def demodular_qpsk(sinal):
-    i_c, q_c = _correlacionar(simbolo, CICLOS_PORTADORA)
-    bits += _bits_do_ponto_mais_proximo(i_c, q_c, _MAPA_QPSK)
+    i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+    bits += bits_do_ponto_mais_proximo(i, q, _MAPA_QPSK)
 ```
 
 > **8PSK / 16PSK (CF-12 págs. 40-41):** mesma ideia com 8 ou 16 fases (3 ou 4 bits/símbolo). O slide
@@ -241,11 +241,11 @@ _NIVEIS_GRAY = {(0,0): -3, (0,1): -1, (1,1): 1, (1,0): 3}   # Gray: vizinhos dif
 _ESCALA_QAM  = V / 3                                         # nível máximo = ±V
 
 def modular_16qam(bits):
-    bits = _pad(bits, 4)
+    bits = pad(bits, 4)
     for k in range(0, len(bits), 4):
-        i_c = _NIVEIS_GRAY[(bits[k],   bits[k+1])] * _ESCALA_QAM
-        q_c = _NIVEIS_GRAY[(bits[k+2], bits[k+3])] * _ESCALA_QAM
-        sinal += _onda(i_c, q_c, CICLOS_PORTADORA)
+        i = _NIVEIS_GRAY[(bits[k],   bits[k+1])] * _ESCALA_QAM
+        q = _NIVEIS_GRAY[(bits[k+2], bits[k+3])] * _ESCALA_QAM
+        sinal += onda(i, q, CICLOS_PORTADORA)
 ```
 
 Demodulação: como a constelação é um **produto cartesiano** (grade), pode-se decidir cada eixo
@@ -253,8 +253,8 @@ separadamente — escolhe o nível `{−3,−1,1,3}` mais próximo do I medido e
 
 ```python
 def demodular_16qam(sinal):
-    i_c, q_c = _correlacionar(simbolo, CICLOS_PORTADORA)
-    bits += _decidir_nivel_gray(i_c) + _decidir_nivel_gray(q_c)
+    i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+    bits += decidir_nivel_gray(i) + decidir_nivel_gray(q)
 ```
 
 > ⚠️ **Atenção à tabela do slide CF-13 (pág. 5).** A tabela "No./Quadribit/Q/I/Amplitude/Fase" tem
@@ -309,9 +309,9 @@ print(len(sinal))                     # 4 símbolos × 100 amostras = 400
 print(f.demodular_qpsk(sinal))        # deve devolver os mesmos bits
 
 # inspecione a constelação que o receptor "vê":
-from camada_fisica import _correlacionar, AMOSTRAS_POR_SIMBOLO as N, CICLOS_PORTADORA as C
+from camada_fisica import correlacionar, AMOSTRAS_POR_SIMBOLO as N, CICLOS_PORTADORA as C
 for k in range(0, len(sinal), N):
-    print(_correlacionar(sinal[k:k+N], C))   # imprime os pares (I,Q) ~ (±0.707, ±0.707)
+    print(correlacionar(sinal[k:k+N], C))   # imprime os pares (I,Q) ~ (±0.707, ±0.707)
 ```
 
 ### Na GUI
@@ -323,9 +323,9 @@ for k in range(0, len(sinal), N):
    mais próximos) costuma errar antes que qpsk. Isso reproduz na prática o trade-off do quadro-resumo.
 
 ### Como ligar o teste à teoria
-- O par `(I, Q)` que `_correlacionar` devolve **é** a coordenada do ponto na constelação dos slides.
+- O par `(I, Q)` que `correlacionar` devolve **é** a coordenada do ponto na constelação dos slides.
 - Sem ruído, o ponto cai exato em cima do símbolo; com ruído, ele se desloca, e a decisão de mínima
-  distância (`_bits_do_ponto_mais_proximo` / `_decidir_nivel_gray`) "arredonda" para o símbolo certo —
+  distância (`bits_do_ponto_mais_proximo` / `decidir_nivel_gray`) "arredonda" para o símbolo certo —
   até o ruído ser grande demais e arredondar para o vizinho (= bit errado).
 
 ---
