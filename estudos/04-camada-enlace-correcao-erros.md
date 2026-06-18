@@ -167,15 +167,15 @@ algum bloco teve erro duplo) — a GUI mostra isso na aba do receptor.
 dados = _bits_aleatorios(6)
 cod = enlace.codificar_hamming(dados)
 dec, n, duplo = enlace.decodificar_hamming(cod)
-assert dec == dados and n == 0 and not duplo     # ida e volta limpa
+print(dec == dados, n, duplo)    # True 0 False — ida e volta limpa, nenhuma correção
 
-cod_err = cod[:]; cod_err[5] ^= 1                 # 1 erro
+cod_err = cod[:]; cod_err[5] ^= 1                 # introduz 1 erro
 dec, n, _ = enlace.decodificar_hamming(cod_err)
-assert dec == dados and n == 1                    # corrigiu
+print(dec == dados, n)           # True 1 — dados corretos, 1 bit corrigido
 
-cod_err[6] ^= 1                                   # 2º erro no mesmo bloco
+cod_err[6] ^= 1                                   # introduz 2º erro no mesmo bloco
 _, _, duplo = enlace.decodificar_hamming(cod_err)
-assert duplo                                      # detectou erro duplo
+print(duplo)                     # True — erro duplo detectado (não é possível corrigir)
 ```
 
 ### Experimento manual (ver a síndrome funcionando)

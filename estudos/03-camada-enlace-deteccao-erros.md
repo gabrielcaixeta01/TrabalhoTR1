@@ -204,15 +204,15 @@ Faz sentido: primeiro conserta, depois audita.
 ### Teste automático (`testes.py`)
 ```python
 for tipo in ("paridade", "checksum", "crc"):
-    com_edc = enlace._ADICIONAR_EDC[tipo](dados)
-    payload, valido = enlace._VERIFICAR_EDC[tipo](com_edc)
-    assert valido and payload == dados           # payload íntegro passa
+    com_edc = enlace.ADICIONAR_EDC[tipo](dados)
+    payload, valido = enlace.VERIFICAR_EDC[tipo](com_edc)
+    print(valido, payload == dados)              # True True — payload íntegro passa
     corrompido = com_edc[:]; corrompido[3] ^= 1  # inverte 1 bit
-    _, valido = enlace._VERIFICAR_EDC[tipo](corrompido)
-    assert not valido                            # detecta o erro
+    _, valido = enlace.VERIFICAR_EDC[tipo](corrompido)
+    print(valido)                                # False — erro detectado
 
-# CRC contra valor conhecido:
-assert enlace._calcular_crc32(app.texto_para_bits("123456789")) == 0xCBF43926
+# CRC contra valor conhecido (padrão IEEE, verificável em qualquer calculadora CRC-32):
+print(hex(enlace.calcular_crc32(app.texto_para_bits("123456789"))))   # 0xcbf43926
 ```
 
 ### Experimento manual (mostra a limitação da paridade)

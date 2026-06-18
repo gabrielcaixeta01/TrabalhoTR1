@@ -190,7 +190,7 @@ for enq in ("contagem", "bytes", "bits"):
         config = dict(simulador.CONFIG_PADRAO, texto=texto,
                       enquadramento=enq, mod_portadora=port, ruido_sigma=0.05)
         r = simulador.executar_simulacao(config)
-        assert r["rx_texto"] == texto
+        print(r["rx_texto"] == texto)   # True — texto recuperado sem erros
 ```
 
 Rodar tudo:

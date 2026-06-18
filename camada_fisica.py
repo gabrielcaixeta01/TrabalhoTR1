@@ -258,9 +258,9 @@ def demodular_fsk(sinal):
 #   01    : 135 graus  (-a, +a)
 #   11    : 225 graus  (-a, -a)
 #   10    : 315 graus  (+a, -a)
-_A_QPSK = V / math.sqrt(2)
-_MAPA_QPSK = {(0, 0): (_A_QPSK, _A_QPSK), (0, 1): (-_A_QPSK, _A_QPSK),
-              (1, 1): (-_A_QPSK, -_A_QPSK), (1, 0): (_A_QPSK, -_A_QPSK)}
+A_QPSK = V / math.sqrt(2)
+MAPA_QPSK = {(0, 0): (A_QPSK, A_QPSK), (0, 1): (-A_QPSK, A_QPSK),
+              (1, 1): (-A_QPSK, -A_QPSK), (1, 0): (A_QPSK, -A_QPSK)}
 
 
 def modular_qpsk(bits):
@@ -269,7 +269,7 @@ def modular_qpsk(bits):
     bits = pad(bits, 2)
     sinal = []
     for k in range(0, len(bits), 2):
-        i, q = _MAPA_QPSK[(bits[k], bits[k + 1])]
+        i, q = MAPA_QPSK[(bits[k], bits[k + 1])]
         sinal += onda(i, q, CICLOS_PORTADORA)
     return sinal
 
@@ -281,16 +281,16 @@ def demodular_qpsk(sinal):
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
         i, q = correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
-        bits += bits_do_ponto_mais_proximo(i, q, _MAPA_QPSK)
+        bits += bits_do_ponto_mais_proximo(i, q, MAPA_QPSK)
     return bits
 
 
 # -------------------------------- 16-QAM ----------------------------------
 # 4 bits/símbolo: os 2 primeiros escolhem o nível de I e os 2 últimos o
 # nível de Q, ambos com código Gray sobre os níveis {-3, -1, +1, +3}*(V/3).
-_NIVEIS_GRAY = {(0, 0): -3, (0, 1): -1, (1, 1): 1, (1, 0): 3}
-_BITS_DO_NIVEL = {nivel: bits for bits, nivel in _NIVEIS_GRAY.items()}  # dict inverso
-_ESCALA_QAM = V / 3                              # nível máximo = V
+NIVEIS_GRAY = {(0, 0): -3, (0, 1): -1, (1, 1): 1, (1, 0): 3}
+BITS_DO_NIVEL = {nivel: bits for bits, nivel in NIVEIS_GRAY.items()}  # dict inverso
+ESCALA_QAM = V / 3                              # nível máximo = V
 
 
 def modular_16qam(bits):
@@ -299,8 +299,8 @@ def modular_16qam(bits):
     bits = pad(bits, 4)
     sinal = []
     for k in range(0, len(bits), 4):
-        i = _NIVEIS_GRAY[(bits[k], bits[k + 1])] * _ESCALA_QAM
-        q = _NIVEIS_GRAY[(bits[k + 2], bits[k + 3])] * _ESCALA_QAM
+        i = NIVEIS_GRAY[(bits[k], bits[k + 1])] * ESCALA_QAM
+        q = NIVEIS_GRAY[(bits[k + 2], bits[k + 3])] * ESCALA_QAM
         sinal += onda(i, q, CICLOS_PORTADORA)
     return sinal
 
@@ -311,11 +311,11 @@ def decidir_nivel_gray(valor):
     melhor_nivel = None
     menor_dist = None
     for nivel in (-3, -1, 1, 3):
-        dist = abs(nivel * _ESCALA_QAM - valor)
+        dist = abs(nivel * ESCALA_QAM - valor)
         if menor_dist is None or dist < menor_dist:
             menor_dist = dist
             melhor_nivel = nivel
-    return list(_BITS_DO_NIVEL[melhor_nivel])
+    return list(BITS_DO_NIVEL[melhor_nivel])
 
 
 def demodular_16qam(sinal):

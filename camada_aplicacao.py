@@ -7,7 +7,7 @@ rede" (bits). Corresponde aos blocos "Entrada de texto / Codificador em
 bits" (TX) e "Conversor bits em texto / Saída de texto" (RX) do diagrama
 do enunciado.
 
-Convenção adotada em TODO o simulador:
+Convenção adotada em todo o simulador:
   - Bits são representados como list[int] contendo apenas 0s e 1s.
   - Cada caractere é codificado em UTF-8 e cada byte é expandido em
     8 bits, do bit mais significativo (MSB) para o menos significativo.

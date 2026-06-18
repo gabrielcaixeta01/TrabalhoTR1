@@ -50,9 +50,9 @@ não há como se recuperar. Por isso, na prática, raramente é usada sozinha.
 ```python
 def enquadrar_contagem(payloads):
     for payload in payloads:
-        n_bytes = len(payload) // 8
-        fluxo += _bytes_para_bits([n_bytes])   # cabeçalho = nº de bytes
-        fluxo += payload
+        n_bytes = len(payload) // 8   # converte de bits para bytes (divide por 8)
+        fluxo += bytes_para_bits([n_bytes])   # cabeçalho: 1 byte com o nº de bytes do payload
+        fluxo += payload                      # payload logo em seguida
 ```
 
 Como o cabeçalho tem **8 bits**, o payload máximo por quadro é **255 bytes** — limite validado em
@@ -62,12 +62,15 @@ No desenquadramento há um detalhe esperto ligado à camada física:
 
 ```python
 def desenquadrar_contagem(bits):
+    pos = 0
     while pos + 8 <= len(bits):
-        n_bytes = _bits_para_bytes(bits[pos:pos+8])[0]
-        pos += 8
+        n_bytes = bits_para_bytes(bits[pos:pos + 8])[0]   # lê o cabeçalho (1 byte = 8 bits)
+        pos += 8                                           # avança além do cabeçalho
         if n_bytes == 0:
-            break   # byte 0x00 = padding do QPSK/16-QAM, não é quadro real
-        ...
+            break   # 0x00 = padding do QPSK/16-QAM (não é quadro real)
+        fim = pos + n_bytes * 8    # posição final = pos atual + (n_bytes × 8 bits)
+        payloads.append(bits[pos:fim])
+        pos = fim                  # avança para o próximo quadro
 ```
 
 O `n_bytes == 0` serve para parar no **padding de zeros** que QPSK/16-QAM acrescentam para fechar
@@ -100,12 +103,13 @@ dado for igual à FLAG **ou** ao ESC, insere-se um ESC **antes** dele. Assim:
 ```python
 def enquadrar_bytes(payloads):
     for payload in payloads:
-        quadro = [FLAG_BYTE]                    # abre
-        for byte in _bits_para_bytes(payload):
-            if byte in (FLAG_BYTE, ESC_BYTE):   # byte "perigoso"?
-                quadro.append(ESC_BYTE)         # insere escape antes
-            quadro.append(byte)
-        quadro.append(FLAG_BYTE)                # fecha
+        quadro = [FLAG_BYTE]                      # abre o quadro com FLAG (0x7E)
+        for byte in bits_para_bytes(payload):
+            if byte in (FLAG_BYTE, ESC_BYTE):     # byte igual à FLAG ou ao ESC?
+                quadro.append(ESC_BYTE)           # insere ESC antes para "proteger" o byte
+            quadro.append(byte)                   # insere o byte de dado (sempre)
+        quadro.append(FLAG_BYTE)                  # fecha o quadro com FLAG (0x7E)
+        fluxo += bytes_para_bits(quadro)          # converte o quadro inteiro de volta para bits
 ```
 
 ### No projeto — receptor (máquina de estados)
@@ -114,21 +118,24 @@ A leitura é uma **máquina de estados** com duas flags de controle (`dentro`, `
 
 ```python
 def desenquadrar_bytes(bits):
+    bytes_fluxo = bits_para_bytes(bits)   # converte o fluxo de bits para lista de bytes
     dentro, escapado, atual = False, False, []
     for byte in bytes_fluxo:
         if not dentro:
-            if byte == FLAG_BYTE:   # achou início de quadro
+            if byte == FLAG_BYTE:          # FLAG de abertura: começa a coletar o quadro
                 dentro, atual = True, []
-            continue
-        if escapado:                # byte logo após ESC = dado literal
-            atual.append(byte); escapado = False
+            continue                       # ignora tudo que está fora de um quadro
+        if escapado:
+            atual.append(byte)             # byte após ESC é sempre dado (FLAG ou ESC literal)
+            escapado = False
         elif byte == ESC_BYTE:
-            escapado = True          # próximo byte é literal
-        elif byte == FLAG_BYTE:      # FLAG de fechamento
-            if atual: payloads.append(_bytes_para_bits(atual))
+            escapado = True                # próximo byte é dado, não delimitador
+        elif byte == FLAG_BYTE:            # FLAG de fechamento: quadro completo
+            if atual:
+                payloads.append(bytes_para_bits(atual))
             dentro = False
         else:
-            atual.append(byte)
+            atual.append(byte)             # byte normal de dado
 ```
 
 Os três estados implícitos: **fora de quadro** (procurando FLAG de abertura), **dentro normal**
@@ -162,29 +169,30 @@ RX:  ...0 1 1 1 1 1 [remove 0] 1...      (depois de cinco 1s, descarta o 0 segui
 ```python
 def enquadrar_bits(payloads):
     for payload in payloads:
-        stuffed, uns = [], 0
+        stuffed, cont_uns = [], 0
         for bit in payload:
             stuffed.append(bit)
-            uns = uns + 1 if bit == 1 else 0    # conta 1s consecutivos
-            if uns == 5:
-                stuffed.append(0)               # insere o 0 de stuffing
-                uns = 0
-        fluxo += FLAG_BITS + stuffed + FLAG_BITS
+            cont_uns = cont_uns + 1 if bit == 1 else 0   # conta 1s consecutivos
+            if cont_uns == 5:
+                stuffed.append(0)    # insere 0 após cinco 1s para impedir a sequência da FLAG
+                cont_uns = 0
+        fluxo += FLAG_BITS + stuffed + FLAG_BITS   # FLAG de abertura + dados + FLAG de fechamento
 ```
 
 ### No projeto — receptor
 
 ```python
 def desenquadrar_bits(bits):
-    # acha FLAG de abertura, acha FLAG de fechamento, e no meio:
-    payload, uns, k = [], 0, i + 8
-    while k < j:
+    # localiza FLAG de abertura (posição i) e FLAG de fechamento (posição j)
+    # depois remove os bits de stuffing entre elas:
+    payload, cont_uns, k = [], 0, i + 8   # k começa logo após a FLAG de abertura
+    while k < j:                           # j é o início da FLAG de fechamento
         bit = bits[k]
-        if uns == 5:        # este 0 foi inserido pelo stuffing -> descarta
-            uns = 0
+        if cont_uns == 5:
+            cont_uns = 0   # este bit é o 0 inserido pelo stuffing: descarta, não adiciona
         else:
             payload.append(bit)
-            uns = uns + 1 if bit == 1 else 0
+            cont_uns = cont_uns + 1 if bit == 1 else 0
         k += 1
 ```
 
@@ -230,31 +238,36 @@ A escolha (`contagem` | `bytes` | `bits`) vem do combo "Tipo de enquadramento" d
 
 ### Teste automático (`testes.py`)
 ```python
-payloads = [_bits_aleatorios(7) for _ in range(3)]
+import camada_enlace as enlace
+
+payloads = [bytes_para_bits([0x41, 0x42, 0x43]) for _ in range(3)]   # payloads de exemplo
 for tipo in ("contagem", "bytes", "bits"):
-    fluxo = enlace._ENQUADRAR[tipo](payloads)
-    assert enlace._DESENQUADRAR[tipo](fluxo) == payloads   # ida e volta
+    fluxo = enlace.ENQUADRAR[tipo](payloads)
+    print(enlace.DESENQUADRAR[tipo](fluxo) == payloads)   # True — ida e volta perfeita
 
 # casos críticos:
-enlace.desenquadrar_bits(enlace.enquadrar_bits([[1]*40])) == [[1]*40]      # bit stuffing só de 1s
-# byte stuffing com FLAG/ESC dentro do payload:
-p = [enlace._bytes_para_bits([0x7E, 0x7D, 0x41, 0x7E])]
-enlace.desenquadrar_bytes(enlace.enquadrar_bytes(p)) == p
+# bit stuffing com payload só de 1s (pior caso: insere 0 a cada 5 bits)
+print(enlace.desenquadrar_bits(enlace.enquadrar_bits([[1]*40])) == [[1]*40])   # True
+
+# byte stuffing com FLAG e ESC dentro do payload (devem ser escapados e restaurados)
+p = [enlace.bytes_para_bits([0x7E, 0x7D, 0x41, 0x7E])]
+print(enlace.desenquadrar_bytes(enlace.enquadrar_bytes(p)) == p)   # True
 ```
 
 ### Experimento manual (recomendo, é muito didático)
 ```python
 import camada_enlace as e
 
-# byte stuffing: veja o ESC aparecer
-p = [e._bytes_para_bits([0x7E, 0x41])]          # payload começa com a própria FLAG
+# byte stuffing: observe o ESC (0x7D) sendo inserido antes do 0x7E
+p = [e.bytes_para_bits([0x7E, 0x41])]    # payload começa com a própria FLAG
 fluxo = e.enquadrar_bytes(p)
-print(e._bits_para_bytes(fluxo))                # observe: 7E 7D 7E 41 7E (ESC inserido!)
+print(e.bits_para_bytes(fluxo))           # resultado: [0x7E, 0x7D, 0x7E, 0x41, 0x7E]
+#                                         # FLAG  ESC  dado  dado  FLAG  (ESC inserido!)
 
-# bit stuffing: veja o 0 inserido
-p = [[1,1,1,1,1,1,1,1]]                          # oito 1s
+# bit stuffing: observe o 0 sendo inserido após cinco 1s consecutivos
+p = [[1, 1, 1, 1, 1, 1, 1, 1]]           # oito 1s seguidos
 fluxo = e.enquadrar_bits(p)
-print(fluxo)                                     # FLAG + 1 1 1 1 1 [0] 1 1 1 [0] + FLAG
+print(fluxo)    # FLAG_BITS + [1,1,1,1,1,0,1,1,0] + FLAG_BITS  (0 inserido após cada grupo de 5)
 ```
 
 ### Na GUI

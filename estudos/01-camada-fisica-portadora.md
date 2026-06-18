@@ -218,7 +218,7 @@ que **vizinhos no círculo diferem em apenas 1 bit**. Assim, se o ruído empurra
 o símbolo vizinho, erra-se **só 1 bit** em vez de 2. O slide destaca isso:
 "Se um dibit for detectado errado, refere-se a apenas um bit errado".
 
-Constelação Gray do projeto (`_MAPA_QPSK`), com `A = V/√2`:
+Constelação Gray do projeto (`MAPA_QPSK`), com `A = V/√2`:
 
 | dibit | fase | (I, Q) |
 |---|---|---|
@@ -234,15 +234,15 @@ Usar `A = V/√2` mantém a amplitude total `√(I²+Q²) = V` em todos os ponto
 ```python
 # A = V/√2 garante que todos os pontos fiquem no círculo de raio V:
 # √(A² + A²) = √(2·A²) = A·√2 = (V/√2)·√2 = V ✓
-_A_QPSK = V / math.sqrt(2)
-_MAPA_QPSK = {(0,0): (_A_QPSK, _A_QPSK), (0,1): (-_A_QPSK, _A_QPSK),
-              (1,1): (-_A_QPSK, -_A_QPSK), (1,0): (_A_QPSK, -_A_QPSK)}
+A_QPSK = V / math.sqrt(2)
+MAPA_QPSK = {(0,0): (A_QPSK, A_QPSK), (0,1): (-A_QPSK, A_QPSK),
+              (1,1): (-A_QPSK, -A_QPSK), (1,0): (A_QPSK, -A_QPSK)}
 
 def modular_qpsk(bits):
     bits = pad(bits, 2)           # garante número par de bits (QPSK lê 2 por vez)
     for k in range(0, len(bits), 2):
         # lê o dibit e busca o ponto (I, Q) correspondente na constelação
-        i, q = _MAPA_QPSK[(bits[k], bits[k+1])]
+        i, q = MAPA_QPSK[(bits[k], bits[k+1])]
         sinal += onda(i, q, CICLOS_PORTADORA)
 ```
 
@@ -254,7 +254,7 @@ def demodular_qpsk(sinal):
     i, q = correlacionar(simbolo, CICLOS_PORTADORA)
     # com ruído, (i, q) não cai exato num ponto; bits_do_ponto_mais_proximo
     # percorre a constelação e devolve o dibit do ponto geometricamente mais perto
-    bits += bits_do_ponto_mais_proximo(i, q, _MAPA_QPSK)
+    bits += bits_do_ponto_mais_proximo(i, q, MAPA_QPSK)
 ```
 
 > **8PSK / 16PSK (CF-12 págs. 40-41):** mesma ideia com 8 ou 16 fases (3 ou 4 bits/símbolo). O slide
@@ -278,17 +278,17 @@ No projeto, os 4 bits são divididos: os 2 primeiros escolhem o nível de **I**,
 ```python
 # níveis inteiros {-3,-1,1,3} com código Gray: vizinhos diferem em 1 bit
 # (00→-3, 01→-1, 11→+1, 10→+3): andar pelos vizinhos muda 1 bit por vez
-_NIVEIS_GRAY = {(0,0): -3, (0,1): -1, (1,1): 1, (1,0): 3}
+NIVEIS_GRAY = {(0,0): -3, (0,1): -1, (1,1): 1, (1,0): 3}
 # escala V/3 faz o nível máximo (3) virar exatamente V: 3 × (V/3) = V
-_ESCALA_QAM  = V / 3
+ESCALA_QAM  = V / 3
 
 def modular_16qam(bits):
     bits = pad(bits, 4)   # garante múltiplo de 4 (16-QAM lê 4 bits por vez)
     for k in range(0, len(bits), 4):
         # bits k,k+1 determinam o nível de I; bits k+2,k+3 determinam o nível de Q
         # cada nível é um dos 4 valores da grade: -3,-1,+1,+3 (escalados)
-        i = _NIVEIS_GRAY[(bits[k],   bits[k+1])] * _ESCALA_QAM
-        q = _NIVEIS_GRAY[(bits[k+2], bits[k+3])] * _ESCALA_QAM
+        i = NIVEIS_GRAY[(bits[k],   bits[k+1])] * ESCALA_QAM
+        q = NIVEIS_GRAY[(bits[k+2], bits[k+3])] * ESCALA_QAM
         sinal += onda(i, q, CICLOS_PORTADORA)
 ```
 
@@ -337,9 +337,9 @@ Em `testes.py`, o bloco "camada física" roda ida-e-volta de **todas** as portad
 for tipo in fisica.MODULACOES_PORTADORA:           # ask, fsk, qpsk, 16qam
     sinal = fisica.modular_portadora(bits, tipo)
     demod = fisica.demodular_portadora(sinal, tipo)
-    assert demod[:len(bits)] == bits               # [:len(bits)] ignora o padding
+    print(demod[:len(bits)] == bits)               # True — [:len(bits)] ignora o padding
     ruidoso = meio.transmitir(sinal, 0.0, 0.1)     # σ = 0.1
-    assert fisica.demodular_portadora(ruidoso, tipo)[:len(bits)] == bits
+    print(fisica.demodular_portadora(ruidoso, tipo)[:len(bits)] == bits)   # True com ruído baixo
 ```
 
 Rodar:
