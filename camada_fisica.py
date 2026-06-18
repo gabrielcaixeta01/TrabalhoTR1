@@ -45,25 +45,18 @@ def modular_nrz_polar(bits):
     """NRZ-Polar: bit 1 -> +V constante; bit 0 -> -V constante."""
     sinal = []
     for bit in bits:
-        if bit == 1:
-            nivel = V
-        else:
-            nivel = -V
-
-        sinal += [nivel] * AMOSTRAS_POR_BIT      # mantém o nível o bit inteiro
-    return sinal # lista da concatenacao de outras listas de nivel
+        nivel = V if bit == 1 else -V
+        sinal += [nivel] * AMOSTRAS_POR_BIT
+    return sinal
 
 
 def demodular_nrz_polar(sinal):
     """Decide cada bit pela MÉDIA das suas amostras (robusto a ruído):
     média > 0 -> 1; média <= 0 -> 0."""
     bits = []
-    for i in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
-        media = sum(sinal[i:i + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
-        if media > 0: # i=0: média de [+V,+V,+V,+V] = +V → bit 1
-            bits.append(1)
-        else:
-            bits.append(0)
+    for k in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
+        media = sum(sinal[k:k + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
+        bits.append(1 if media > 0 else 0)
     return bits
 
 
@@ -87,14 +80,10 @@ def demodular_manchester(sinal):
     se a 1ª metade for maior, houve transição de descida -> bit 1."""
     metade = AMOSTRAS_POR_BIT // 2
     bits = []
-    for i in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
-        m1 = sum(sinal[i:i + metade]) / metade
-        m2 = sum(sinal[i + metade:i + AMOSTRAS_POR_BIT]) / (AMOSTRAS_POR_BIT - metade)
-        
-        if m1 > m2: #alto -> baixo
-            bits.append(1)
-        else: #baixo -> alto
-            bits.append(0)
+    for k in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
+        m1 = sum(sinal[k:k + metade]) / metade
+        m2 = sum(sinal[k + metade:k + AMOSTRAS_POR_BIT]) / (AMOSTRAS_POR_BIT - metade)
+        bits.append(1 if m1 > m2 else 0)
     return bits
 
 
@@ -116,13 +105,9 @@ def demodular_bipolar(sinal):
     """Decide pelo MÓDULO da média: perto de 0 -> bit 0; perto de V
     (em qualquer polaridade) -> bit 1. Limiar no meio do caminho (V/2)."""
     bits = []
-    for i in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
-        media = sum(sinal[i:i + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
-        
-        if abs(media) > V / 2: #Se |média| > V/2 → está mais perto de V → bit 1
-            bits.append(1)
-        else:
-            bits.append(0)
+    for k in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
+        media = sum(sinal[k:k + AMOSTRAS_POR_BIT]) / AMOSTRAS_POR_BIT
+        bits.append(1 if abs(media) > V / 2 else 0)
     return bits
 
 
@@ -136,9 +121,9 @@ def demodular_bipolar(sinal):
 # e então escolhe o ponto de constelação MAIS PRÓXIMO do (I, Q) medido -
 # é isso que dá robustez ao ruído.
 # ===========================================================================
-def _onda(c_i, c_q, ciclos):
+def onda(i, q, ciclos):
     """Gera um símbolo de AMOSTRAS_POR_SIMBOLO amostras a partir do ponto
-    (c_i, c_q) da constelação: monta s(t) = I.cos(2.pi.f.t) - Q.sen(2.pi.f.t).
+    (i, q) da constelação: monta s(t) = I.cos(2.pi.f.t) - Q.sen(2.pi.f.t).
     `ciclos` é a frequência da portadora medida em ciclos por símbolo."""
     N = AMOSTRAS_POR_SIMBOLO
     amostras = []
@@ -146,46 +131,48 @@ def _onda(c_i, c_q, ciclos):
         # n/N é a fração do símbolo já percorrida (vai de 0 a quase 1);
         # multiplicar por ciclos e 2.pi dá o ângulo da portadora nessa amostra.
         angulo = 2 * math.pi * ciclos * n / N
-        amostras.append(c_i * math.cos(angulo) - c_q * math.sin(angulo))
+        amostras.append(i * math.cos(angulo) - q * math.sin(angulo))
     return amostras
 
 
-def _correlacionar(simbolo, ciclos):
-    """Operação inversa de _onda: recupera (I, Q) de um símbolo recebido
+def correlacionar(simbolo, ciclos):
+    """Operação inversa de onda: recupera (I, Q) de um símbolo recebido
     projetando-o sobre cos e -sen da portadora de referência (produto
     interno). O fator 2/N normaliza para que a amplitude original volte."""
     N = len(simbolo)
     soma_cos = 0.0
     soma_sen = 0.0
+    # enumerate dá (n, amostra): n é o índice da amostra, usado para calcular
+    # o ângulo da portadora naquele instante; amostra é o valor em Volts.
     for n, amostra in enumerate(simbolo):
         angulo = 2 * math.pi * ciclos * n / N
         soma_cos += amostra * math.cos(angulo)
         soma_sen += amostra * math.sin(angulo)
-    i_comp = 2 / N * soma_cos
-    q_comp = -2 / N * soma_sen
-    return i_comp, q_comp
+    i = 2 / N * soma_cos
+    q = -2 / N * soma_sen
+    return i, q
 
 
-def _pad(bits, bits_por_simbolo):
+def pad(bits, tamanho):
     """Completa a lista com zeros até fechar um número inteiro de símbolos
     (QPSK usa 2 bits/símbolo, 16-QAM usa 4). O receptor descarta esse
     excedente naturalmente no desenquadramento."""
-    resto = len(bits) % bits_por_simbolo
+    resto = len(bits) % tamanho
     if resto == 0:
         return bits                              # já é múltiplo, nada a fazer
-    faltam = bits_por_simbolo - resto
+    faltam = tamanho - resto
     return bits + [0] * faltam
 
 
-def _bits_do_ponto_mais_proximo(i_c, q_c, constelacao):
+def bits_do_ponto_mais_proximo(i, q, constelacao):
     """Decisão de mínima distância: dentre os pontos da `constelacao`
     (dict {bits: (I, Q)}), devolve os bits do ponto cujo (I, Q) está mais
-    perto do (i_c, q_c) medido. É o que dá robustez ao ruído."""
+    perto do (i, q) medido. É o que dá robustez ao ruído."""
     melhor_bits = None
     menor_dist = None
     for bits_simbolo, (i_ref, q_ref) in constelacao.items():
         # distância ao quadrado (não precisa da raiz: só comparamos entre si)
-        dist = (i_ref - i_c) ** 2 + (q_ref - q_c) ** 2
+        dist = (i_ref - i) ** 2 + (q_ref - q) ** 2
         if menor_dist is None or dist < menor_dist:
             menor_dist = dist
             melhor_bits = bits_simbolo
@@ -198,7 +185,7 @@ def modular_ask(bits):
     bit 0 -> ausência de portadora (0 V)."""
     sinal = []
     for bit in bits:
-        sinal += _onda(V if bit == 1 else 0.0, 0.0, CICLOS_PORTADORA)
+        sinal += onda(V if bit == 1 else 0.0, 0.0, CICLOS_PORTADORA)
     return sinal
 
 
@@ -208,8 +195,8 @@ def demodular_ask(sinal):
     bits = []
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
-        i_c, q_c = _correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
-        bits.append(1 if math.hypot(i_c, q_c) > V / 2 else 0)
+        i, q = correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
+        bits.append(1 if math.hypot(i, q) > V / 2 else 0)
     return bits
 
 
@@ -220,7 +207,7 @@ def modular_fsk(bits):
     f0, f1 = CICLOS_FSK
     sinal = []
     for bit in bits:
-        sinal += _onda(V, 0.0, f1 if bit == 1 else f0)
+        sinal += onda(V, 0.0, f1 if bit == 1 else f0)
     return sinal
 
 
@@ -233,8 +220,8 @@ def demodular_fsk(sinal):
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
         simbolo = sinal[k:k + N]
-        e0 = math.hypot(*_correlacionar(simbolo, f0))   # energia em f1
-        e1 = math.hypot(*_correlacionar(simbolo, f1))   # energia em f2
+        e0 = math.hypot(*correlacionar(simbolo, f0))   # energia em f1
+        e1 = math.hypot(*correlacionar(simbolo, f1))   # energia em f2
         bits.append(1 if e1 > e0 else 0)
     return bits
 
@@ -255,11 +242,11 @@ _MAPA_QPSK = {(0, 0): (_A_QPSK, _A_QPSK), (0, 1): (-_A_QPSK, _A_QPSK),
 def modular_qpsk(bits):
     """QPSK: agrupa os bits em pares (dibits) e transmite um símbolo de
     fase correspondente. Dobra a taxa em relação ao PSK binário."""
-    bits = _pad(bits, 2)
+    bits = pad(bits, 2)
     sinal = []
     for k in range(0, len(bits), 2):
-        i_c, q_c = _MAPA_QPSK[(bits[k], bits[k + 1])]
-        sinal += _onda(i_c, q_c, CICLOS_PORTADORA)
+        i, q = _MAPA_QPSK[(bits[k], bits[k + 1])]
+        sinal += onda(i, q, CICLOS_PORTADORA)
     return sinal
 
 
@@ -269,8 +256,8 @@ def demodular_qpsk(sinal):
     bits = []
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
-        i_c, q_c = _correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
-        bits += _bits_do_ponto_mais_proximo(i_c, q_c, _MAPA_QPSK)
+        i, q = correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
+        bits += bits_do_ponto_mais_proximo(i, q, _MAPA_QPSK)
     return bits
 
 
@@ -285,16 +272,16 @@ _ESCALA_QAM = V / 3                              # nível máximo = V
 def modular_16qam(bits):
     """16-QAM: varia amplitude E fase simultaneamente. Constelação 4x4
     de 16 pontos -> 4 bits por símbolo."""
-    bits = _pad(bits, 4)
+    bits = pad(bits, 4)
     sinal = []
     for k in range(0, len(bits), 4):
-        i_c = _NIVEIS_GRAY[(bits[k], bits[k + 1])] * _ESCALA_QAM
-        q_c = _NIVEIS_GRAY[(bits[k + 2], bits[k + 3])] * _ESCALA_QAM
-        sinal += _onda(i_c, q_c, CICLOS_PORTADORA)
+        i = _NIVEIS_GRAY[(bits[k], bits[k + 1])] * _ESCALA_QAM
+        q = _NIVEIS_GRAY[(bits[k + 2], bits[k + 3])] * _ESCALA_QAM
+        sinal += onda(i, q, CICLOS_PORTADORA)
     return sinal
 
 
-def _decidir_nivel_gray(valor):
+def decidir_nivel_gray(valor):
     """Escolhe o nível {-3,-1,1,3} cujo valor em Volts (nível * escala) está
     mais próximo do `valor` medido e devolve o par de bits Gray dele."""
     melhor_nivel = None
@@ -314,8 +301,8 @@ def demodular_16qam(sinal):
     bits = []
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
-        i_c, q_c = _correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
-        bits += _decidir_nivel_gray(i_c) + _decidir_nivel_gray(q_c)
+        i, q = correlacionar(sinal[k:k + N], CICLOS_PORTADORA)
+        bits += decidir_nivel_gray(i) + decidir_nivel_gray(q)
     return bits
 
 
