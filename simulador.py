@@ -2,22 +2,7 @@
 """
 SIMULADOR (rotina principal)
 ============================
-Orquestra todas as camadas para simular uma transmissão completa,
-seguindo o diagrama do enunciado:
-
-  THREAD TX                       MEIO                    THREAD RX
-  ---------                       ----                    ---------
-  texto                                                       texto
-    | aplicação (texto->bits)                  (bits->texto) aplicação
-  bits                                                        bits
-    | enlace (EDC/Hamming + enquadramento)   (inverso) enlace |
-  quadros (bits)                                    quadros (bits)
-    | física (banda-base -> portadora)      (demod/decod) física
-  sinal (V) ----> [ + ruído gaussiano n(x, sigma) ] ----> sinal (V)
-
-O enunciado pede "Programa/Thread TX" e "Programa/Thread RX" separados:
-aqui o TX e o RX rodam em threading.Thread distintas e se comunicam
-exclusivamente por uma queue.Queue, que faz o papel do meio físico.
+Orquestra todas as camadas para simular uma transmissão completa
 
 Executar `python3 simulador.py` abre a interface gráfica. A função
 executar_simulacao() também pode ser usada isoladamente (ex.: testes).
@@ -32,9 +17,8 @@ import camada_fisica
 import meio_comunicacao
 
 
-# Configuração padrão (a GUI sobrescreve estes valores).
 CONFIG_PADRAO = {
-    "texto": "Ola, TR1!",
+    "texto": "O hexa vem",
     "tam_max_quadro": 8,        # bytes de dados da aplicação por quadro
     "enquadramento": "bits",    # contagem | bytes | bits
     "deteccao": "crc",          # nenhum | paridade | checksum | crc
@@ -53,17 +37,17 @@ def _rotina_tx(config, meio, resultados):
     possa exibir a saída de bits/sinal de cada camada (como pede o
     diagrama de interface do enunciado).
     """
-    # --- Camada de aplicação: texto -> bits -------------------------------
+
+    # Camada de aplicação: texto -> bits 
     bits_app = camada_aplicacao.texto_para_bits(config["texto"])
     resultados["tx_bits_aplicacao"] = bits_app
 
-    # --- Camada de enlace: EDC + (Hamming) + enquadramento ----------------
+    # Camada de enlace: EDC + (Hamming) + enquadramento
     bits_enlace = camada_enlace.transmitir(bits_app, config)
     resultados["tx_bits_enlace"] = bits_enlace
 
-    # --- Camada física ------------------------------------------------------
-    # 1º estágio: codificação banda-base (sempre gerada, para visualização
-    # e porque é o sinal transmitido quando não há portadora).
+    # Camada física 
+    # 1º estágio: codificação banda-base
     sinal_banda_base = camada_fisica.modular_digital(
         bits_enlace, config["mod_digital"])
     resultados["tx_sinal_banda_base"] = sinal_banda_base
@@ -83,20 +67,20 @@ def _rotina_tx(config, meio, resultados):
 
 def _rotina_rx(config, meio, resultados):
     """THREAD RECEPTORA: sobe a pilha de protocolos (caminho inverso)."""
-    # Recebe do meio o sinal JÁ RUIDOSO (o ruído é somado no canal,
-    # entre as duas threads - ver executar_simulacao).
+    
     sinal_rx = meio.get()
     resultados["rx_sinal_recebido"] = sinal_rx
 
-    # --- Camada física: recupera os bits ----------------------------------
+    # Camada física: recupera os bits
     if config["mod_portadora"] != "nenhuma":
-        # Demodula a portadora (correlação coerente) -> bits.
         bits_rx = camada_fisica.demodular_portadora(
             sinal_rx, config["mod_portadora"])
+        
         # Reconstrói o sinal banda-base a partir dos bits demodulados,
         # apenas para exibição do estágio intermediário na GUI.
         resultados["rx_sinal_banda_base"] = camada_fisica.modular_digital(
             bits_rx, config["mod_digital"])
+        
     else:
         # Sem portadora: decodifica o banda-base ruidoso diretamente.
         resultados["rx_sinal_banda_base"] = sinal_rx
@@ -104,29 +88,25 @@ def _rotina_rx(config, meio, resultados):
             sinal_rx, config["mod_digital"])
     resultados["rx_bits_fisica"] = bits_rx
 
-    # --- Camada de enlace: desenquadra, corrige e verifica ----------------
+    # Camada de enlace: desenquadra, corrige e verifica
     bits_app, relatorio = camada_enlace.receber(bits_rx, config)
     resultados["rx_bits_aplicacao"] = bits_app
     resultados["rx_relatorio_quadros"] = relatorio
 
-    # --- Camada de aplicação: bits -> texto --------------------------------
+    # Camada de aplicação: bits -> texto
     resultados["rx_texto"] = camada_aplicacao.bits_para_texto(bits_app)
 
 
 def executar_simulacao(config):
-    """Executa uma simulação completa e devolve um dicionário com TODAS as
-    saídas intermediárias (bits e sinais de cada camada, TX e RX).
-
-    O meio de comunicação é modelado por duas filas:
-      TX --fila_tx--> [canal: soma ruído gaussiano] --fila_rx--> RX
-    """
+    """Executa uma simulação completa e devolve um dicionário com todas as
+    saídas intermediárias (bits e sinais de cada camada, TX e RX)."""
+    
     resultados = {}
     fila_tx, fila_rx = queue.Queue(), queue.Queue()
 
-    th_tx = threading.Thread(target=_rotina_tx,
-                             args=(config, fila_tx, resultados))
-    th_rx = threading.Thread(target=_rotina_rx,
-                             args=(config, fila_rx, resultados))
+    th_tx = threading.Thread(target=_rotina_tx, args=(config, fila_tx, resultados))
+    th_rx = threading.Thread(target=_rotina_rx, args=(config, fila_rx, resultados))
+
     th_tx.start()
     th_rx.start()
 
@@ -150,7 +130,5 @@ def executar_simulacao(config):
 
 
 if __name__ == "__main__":
-    # A interface gráfica é importada só aqui para que os módulos das
-    # camadas possam ser testados em máquinas sem GTK instalado.
     from interface_gui import JanelaSimulador
     JanelaSimulador().executar()
