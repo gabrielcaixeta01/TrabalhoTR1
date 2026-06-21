@@ -171,7 +171,7 @@ def pad(bits, tamanho):
     excedente naturalmente no desenquadramento."""
     resto = len(bits) % tamanho
     if resto == 0:
-        return bits                              # já é múltiplo, nada a fazer
+        return bits                         
     faltam = tamanho - resto
     return bits + [0] * faltam
 
@@ -241,8 +241,9 @@ def demodular_fsk(sinal):
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
         simbolo = sinal[k:k + N]
-        e0 = math.hypot(*correlacionar(simbolo, f0))   # energia em f1
-        e1 = math.hypot(*correlacionar(simbolo, f1))   # energia em f2
+        # math.hypot(*...) desempacota o par (i, q) e calcula √(i²+q²) = energia naquela frequência
+        e0 = math.hypot(*correlacionar(simbolo, f0))  
+        e1 = math.hypot(*correlacionar(simbolo, f1))  
         if e1 > e0:
             bits.append(1)
         else:
@@ -289,8 +290,9 @@ def demodular_qpsk(sinal):
 # 4 bits/símbolo: os 2 primeiros escolhem o nível de I e os 2 últimos o
 # nível de Q, ambos com código Gray sobre os níveis {-3, -1, +1, +3}*(V/3).
 NIVEIS_GRAY = {(0, 0): -3, (0, 1): -1, (1, 1): 1, (1, 0): 3}
-BITS_DO_NIVEL = {nivel: bits for bits, nivel in NIVEIS_GRAY.items()}  # dict inverso
-ESCALA_QAM = V / 3                              # nível máximo = V
+# dict inverso: dado um nível ({-3,-1,1,3}), recupera o par de bits Gray
+BITS_DO_NIVEL = {nivel: bits for bits, nivel in NIVEIS_GRAY.items()} # só nao deixa explicito pq vai que muda o dict anterior
+ESCALA_QAM = V / 3                             
 
 
 def modular_16qam(bits):

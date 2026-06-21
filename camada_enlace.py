@@ -34,10 +34,8 @@ DECISÕES DE PROJETO (documentar no relatório):
   - FLAG = 0x7E (01111110) e ESC = 0x7D, como no HDLC/PPP.
 """
 
-# ---------------------------------------------------------------------------
-# Constantes do protocolo
-# ---------------------------------------------------------------------------
-FLAG_BYTE = 0x7E          # 01111110 - delimitador de quadro (HDLC/PPP)
+
+FLAG_BYTE = 0x7E          # 01111110 - delimitador de quadro 
 ESC_BYTE = 0x7D           # 01111101 - caractere de escape p/ inserção de bytes
 FLAG_BITS = [0, 1, 1, 1, 1, 1, 1, 0]
 
@@ -45,17 +43,13 @@ FLAG_BITS = [0, 1, 1, 1, 1, 1, 1, 0]
 TAMANHO_EDC = {"nenhum": 0, "paridade": 1, "checksum": 2, "crc": 4}
 
 
-# ===========================================================================
-# Funções auxiliares de conversão bits <-> bytes (uso interno da camada)
-# ===========================================================================
+
 def bits_para_bytes(bits):
     """Agrupa a lista de bits (múltipla de 8) em uma lista de inteiros 0-255."""
     resultado = []
     for i in range(0, len(bits), 8):
         byte = 0
         for b in bits[i:i + 8]:
-            # desloca o byte 1 bit para a esquerda e insere o novo bit no LSB
-            # como percorremos MSB→LSB, isso constrói o byte na ordem certa
             byte = (byte << 1) | b
         resultado.append(byte)
     return resultado
@@ -65,10 +59,9 @@ def bytes_para_bits(lista_bytes):
     """Expande cada byte (int 0-255) em 8 bits, MSB primeiro."""
     bits = []
     for byte in lista_bytes:
-        # range(7,-1,-1) vai do bit 7 (MSB) até o bit 0 (LSB)
-        # (byte >> i) & 1 isola o bit na posição i: desloca i casas e pega o bit mais baixo
         for i in range(7, -1, -1):
-            bits.append((byte >> i) & 1)
+            bit = (byte >> i) & 1
+            bits.append(bit)
     return bits
 
 
@@ -171,14 +164,20 @@ def enquadrar_bits(payloads):
     """
     fluxo = []
     for payload in payloads:
-        stuffed, cont_uns = [], 0
+        trem, uns = [], 0
         for bit in payload:
-            stuffed.append(bit)
-            cont_uns = cont_uns + 1 if bit == 1 else 0   # conta 1s consecutivos
-            if cont_uns == 5:
-                stuffed.append(0)                # insere o 0 de stuffing após 5 uns
-                cont_uns = 0
-        fluxo += FLAG_BITS + stuffed + FLAG_BITS
+            trem.append(bit)
+
+            if bit == 1:
+                uns += 1
+            else:
+                uns = 0
+
+            if uns == 5:
+                trem.append(0)                
+                uns = 0
+
+        fluxo += FLAG_BITS + trem + FLAG_BITS
     return fluxo
 
 
@@ -188,26 +187,36 @@ def desenquadrar_bits(bits):
     i = 0
     n = len(bits)
     while i + 8 <= n:
-        if bits[i:i + 8] != FLAG_BITS:           # procura a FLAG de abertura
+        if bits[i:i + 8] != FLAG_BITS:           # procura a flag de abertura
             i += 1
             continue
-        j = i + 8                                # procura a FLAG de fechamento
+        j = i + 8                                # procura a flag de fechamento
+
         while j + 8 <= n and bits[j:j + 8] != FLAG_BITS:
             j += 1
         if j + 8 > n:                            # não há fechamento: descarta
             break
+
         # Remove o stuffing: o 0 que vem depois de cinco 1s é descartado.
-        payload, cont_uns, k = [], 0, i + 8
+        payload, uns, k = [], 0, i + 8
         while k < j:
             bit = bits[k]
-            if cont_uns == 5:                    # este bit é o 0 inserido pelo stuffing
-                cont_uns = 0                     # descarta (não adiciona ao payload)
+            if uns == 5:                    # este bit é o 0 inserido pelo stuffing
+                uns = 0                     # descarta (não adiciona ao payload)
+
             else:
                 payload.append(bit)
-                cont_uns = cont_uns + 1 if bit == 1 else 0
+                if bit == 1:
+                    uns += 1
+
+                else:
+                    uns = 0
+
             k += 1
+
         if payload:
             payloads.append(payload)
+
         i = j + 8                                # continua após o fechamento
     return payloads
 
@@ -220,18 +229,13 @@ def desenquadrar_bits(bits):
 
 # ----------------------------- paridade par -------------------------------
 def adicionar_paridade_par(bits):
-    """Anexa 1 byte: 7 zeros + o bit de paridade par de todo o payload.
-
-    Paridade PAR: o bit é escolhido para que o total de 1s (payload +
-    paridade) seja par. Detecta qualquer número ÍMPAR de bits invertidos.
-    O byte inteiro (e não 1 bit solto) mantém o alinhamento em bytes.
-    """
+    # Anexa 1 byte: 7 zeros + o bit de paridade par de todo o payload.
     paridade = sum(bits) % 2                     # 1 se nº de 1s for ímpar
     return bits + [0] * 7 + [paridade]
 
 
 def verificar_paridade_par(bits):
-    """Recalcula a paridade: a soma de TODOS os bits deve ser par."""
+    # Recalcula a paridade: a soma dos bits deve ser par.
     if len(bits) < 8:
         return bits, False
     ok = (sum(bits) % 2) == 0
@@ -242,7 +246,7 @@ def verificar_paridade_par(bits):
 def soma_complemento1(palavras):
     """Soma palavras de 16 bits em aritmética de complemento de 1:
     todo "vai-um" que estoura o 16º bit é somado de volta no resultado
-    (end-around carry). É o mesmo procedimento do checksum da Internet."""
+    (end-around carry."""
     soma = 0
     for palavra in palavras:
         soma += palavra
@@ -253,32 +257,34 @@ def soma_complemento1(palavras):
 
 
 def bits_para_palavras16(bits):
-    """Agrupa os bits em palavras de 16 bits, completando com zeros se
-    necessário (o padding é apenas para o cálculo, não é transmitido)."""
-    bits = bits + [0] * ((-len(bits)) % 16)
-    return [bits_para_bytes(bits[i:i + 8])[0] << 8 |
-            bits_para_bytes(bits[i + 8:i + 16])[0]
-            for i in range(0, len(bits), 16)]
+    # Agrupa os bits em palavras de 16 bits, completando com zeros se necessário
+    bits = bits + [0] * ((-len(bits)) % 16)    
+    palavras = []
+    for i in range(0, len(bits), 16):
+        byte_alto = bits_para_bytes(bits[i:i + 8])[0]        # 8 bits mais altos
+        byte_baixo = bits_para_bytes(bits[i + 8:i + 16])[0]  # 8 bits mais baixos
+
+        palavra = (byte_alto << 8) | byte_baixo  # junta os dois bytes em 16 bits
+        palavras.append(palavra)
+
+    return palavras
 
 
 def adicionar_checksum(bits):
-    """Anexa 2 bytes com o complemento de 1 da soma das palavras de 16 bits.
+    #Anexa 2 bytes com o complemento de 1 da soma das palavras de 16 bits.
 
-    No receptor, somar (payload + checksum) deve dar 0xFFFF, pois o
-    checksum é exatamente o que "falta" para a soma saturar.
-    """
     soma = soma_complemento1(bits_para_palavras16(bits))
-    checksum = (~soma) & 0xFFFF                  # complemento de 1 da soma
+    checksum = (~soma) & 0xFFFF                  # sem o ffff ia virar um num negativo e nao complemento de 1
+
     return bits + bytes_para_bits([checksum >> 8, checksum & 0xFF])
 
 
 def verificar_checksum(bits):
-    """Soma payload + checksum em complemento de 1 e compara com 0xFFFF."""
+    #Soma payload + checksum em complemento de 1 e compara com 0xFFFF
     if len(bits) < 16:
         return bits, False
     payload = bits[:-16]
-    total = soma_complemento1(
-        bits_para_palavras16(payload) + bits_para_palavras16(bits[-16:]))
+    total = soma_complemento1(bits_para_palavras16(payload) + bits_para_palavras16(bits[-16:]))
     return payload, total == 0xFFFF
 
 
