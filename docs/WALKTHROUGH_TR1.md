@@ -8,8 +8,8 @@ que cada camada faz por tras e como testar cada funcionalidade isoladamente.
 Interface web local:
 
 ```bash
-cd /Users/augustop/Github/TrabalhoTR1
-/usr/bin/python3 simulador_web.py
+cd TrabalhoTR1
+python3 simulador_web.py
 ```
 
 Abra:
@@ -21,8 +21,8 @@ http://127.0.0.1:8765
 Suite completa de testes:
 
 ```bash
-cd /Users/augustop/Github/TrabalhoTR1
-/usr/bin/python3 testes.py
+cd TrabalhoTR1
+python3 testes.py
 ```
 
 ## 2. Ideia central do projeto

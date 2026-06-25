@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.DS_Store
 
 .venv/
 .venv-gtk/
@@ -10,3 +11,8 @@ env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+tmp/
+*.aux
+*.log
+*.out
+*.toc

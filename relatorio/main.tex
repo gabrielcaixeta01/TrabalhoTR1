@@ -57,7 +57,6 @@
 
   {\large\bfseries Integrantes do Grupo:\par}
   \vspace{0.3cm}
-  {\large Gabriel Caixeta Romero\par}
   {\large Gustavo Henrique Andrade Cavalcanti\par}
   {\large Fernando Augusto Hortencio\par}
 
@@ -85,7 +84,7 @@ O ruido e somado justamente no canal, entre as duas \textit{threads}. Assim, o m
 %==================== ARQUITETURA ====================
 \section{Arquitetura do Simulador}
 
-O simulador foi escrito em Python 3. A interface grafica usa PyGObject (GTK 3) e a biblioteca matplotlib serve apenas para plotar os sinais.
+O simulador foi escrito em Python 3. A interface grafica usa PyGObject (GTK 3), e os graficos dos sinais sao desenhados no proprio GTK com \texttt{Gtk.DrawingArea}. Assim, os protocolos e a visualizacao principal nao dependem de bibliotecas externas de calculo ou plotagem.
 
 O enunciado exige os modulos \texttt{CamadaFisica}, \texttt{CamadaEnlace}, \texttt{InterfaceGUI} e \texttt{Simulador}. O projeto entrega esses modulos em \textit{snake\_case} (padrao da linguagem) e acrescenta modulos auxiliares para a camada de aplicacao, o meio de comunicacao e a suite de testes.
 
@@ -223,12 +222,12 @@ A interface foi feita em GTK 3 (nao em terminal), conforme exigido, pela classe 
 
 O painel esquerdo reune a configuracao: o texto de entrada, o tamanho maximo de quadro, os menus de enquadramento, deteccao, correcao, modulacao digital e modulacao por portadora, e os parametros de ruido $x$ e $\sigma$.
 
-O painel direito tem duas abas, Transmissor e Receptor. Cada uma mostra os bits de cada camada, o texto recuperado, um relatorio por quadro (EDC OK ou com erro, bits corrigidos e erro duplo) e os graficos dos sinais, com matplotlib embutido no GTK. A separacao entre TX e RX fica explicita, atendendo ao enunciado.
+O painel direito mostra metricas gerais, uma tabela de processamento por fase e duas abas, Transmissor e Receptor. Cada aba mostra os bits de cada camada, o texto recuperado, um relatorio por quadro (EDC OK ou com erro, bits corrigidos e erro duplo) e os graficos dos sinais desenhados diretamente em GTK. A separacao entre TX e RX fica explicita, atendendo ao enunciado.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.92\linewidth]{interface_gtk.png}
-  \caption{Interface gráfica em GTK 3: painel de configuração à esquerda e abas Transmissor e Receptor à direita, com gráficos dos sinais embutidos.}
+  \caption{Interface gráfica em GTK 3: painel de configuração à esquerda, métricas no painel principal, tabela por fase e abas Transmissor/Receptor com gráficos nativos dos sinais.}
   \label{fig:interface_gtk}
 \end{figure}
 
@@ -282,15 +281,13 @@ O resultado atual da execucao e ``TODOS OS TESTES PASSARAM'', o que evidencia a 
 %==================== MEMBROS ====================
 \section{Membros e Atividades Desenvolvidas}
 
-O trabalho foi dividido entre os tres integrantes do grupo, conforme as principais frentes do projeto.
+O trabalho foi dividido entre os dois integrantes do grupo, mantendo uma separacao equilibrada entre protocolos, simulacao e interface.
 
-\textbf{Gabriel Caixeta Romero} ficou responsavel pela camada de enlace: as tres tecnicas de enquadramento, os codigos de deteccao (paridade, checksum e CRC-32) e o Hamming, alem da suite de testes de ida-e-volta.
+\textbf{Gustavo Henrique Andrade Cavalcanti} ficou responsavel pela camada fisica e por parte da camada de enlace: modulacoes banda-base (NRZ-Polar, Manchester e Bipolar), modulacoes por portadora (ASK, FSK, QPSK e 16-QAM), meio de comunicacao com ruido gaussiano, enquadramento e mecanismos de deteccao e correcao de erros.
 
-\textbf{Gustavo Henrique Andrade Cavalcanti} desenvolveu a camada fisica: as modulacoes banda-base (NRZ-Polar, Manchester e Bipolar) e por portadora (ASK, FSK, QPSK e 16-QAM), alem do modulo do meio de comunicacao com ruido gaussiano.
+\textbf{Fernando Augusto Hortencio} ficou responsavel pela integracao do simulador, pela comunicacao entre as \textit{threads} de transmissor e receptor por filas, pela interface grafica em GTK, pela interface web opcional, pela organizacao do repositorio, pela documentacao e pela validacao final com testes de ida-e-volta.
 
-\textbf{Fernando Augusto Hortencio} cuidou da interface grafica em GTK, da integracao do simulador com a comunicacao entre as \textit{threads} de transmissor e receptor por filas, e da redacao do relatorio.
-
-Apesar dessa divisao, houve colaboracao continua entre os membros nas etapas de integracao, testes e revisao.
+Apesar dessa divisao, ambos revisaram os pontos centrais do projeto para dominar a explicacao completa do codigo durante a apresentacao.
 
 %==================== CONCLUSÃO ====================
 \section{Conclusão}

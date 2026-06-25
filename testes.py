@@ -47,13 +47,13 @@ def main():
         ok &= testar(f"enquadramento '{tipo}': ida e volta",
                      enlace.DESENQUADRAR[tipo](fluxo) == payloads)
 
-    # Caso crítico do bit stuffing: payload cheio de 1s (força o stuffing).
+    # caso crítico do bit stuffing: payload cheio de 1s.
     p = [[1] * 40]
     fluxo = enlace.enquadrar_bits(p)
     ok &= testar("bit stuffing com payload só de 1s",
                  enlace.desenquadrar_bits(fluxo) == p)
 
-    # Caso crítico do byte stuffing: payload contendo FLAG e ESC.
+    # caso crítico do byte stuffing: payload contendo flag e esc.
     p = [enlace.bytes_para_bits([0x7E, 0x7D, 0x41, 0x7E])]
     fluxo = enlace.enquadrar_bytes(p)
     ok &= testar("byte stuffing com FLAG/ESC no payload",
@@ -71,12 +71,12 @@ def main():
         _, valido = enlace.VERIFICAR_EDC[tipo](corrompido)
         ok &= testar(f"{tipo}: detecta 1 bit invertido", not valido)
 
-    # CRC-32 contra valor conhecido: CRC32("123456789") = 0xCBF43926.
+    # crc-32 contra valor conhecido: crc32("123456789") = 0xcbf43926.
     bits_123 = app.texto_para_bits("123456789")
     ok &= testar("crc32 do vetor de teste '123456789' == 0xCBF43926",
                  enlace.calcular_crc32(bits_123) == 0xCBF43926)
 
-    # ---------------- Hamming ----------------
+    # ---------------- hamming ----------------
     dados = _bits_aleatorios(6)
     cod = enlace.codificar_hamming(dados)
     dec, n, duplo = enlace.decodificar_hamming(cod)

@@ -28,5 +28,5 @@ def potencia_media(sinal):
     if not sinal:
         return 0.0
     
-    # P = (1/N) * soma( amostra² ) — potência sobre resistência de 1 ohm
+    # potência média sobre resistência de 1 ohm
     return sum(amostra * amostra for amostra in sinal) / len(sinal)

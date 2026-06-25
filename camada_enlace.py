@@ -39,7 +39,7 @@ FLAG_BYTE = 0x7E          # 01111110 - delimitador de quadro
 ESC_BYTE = 0x7D           # 01111101 - caractere de escape p/ inserção de bytes
 FLAG_BITS = [0, 1, 1, 1, 1, 1, 1, 0]
 
-# Quantos BYTES cada técnica de detecção acrescenta ao final do payload
+# quantos bytes cada técnica de detecção acrescenta ao final do payload
 TAMANHO_EDC = {"nenhum": 0, "paridade": 1, "checksum": 2, "crc": 4}
 
 
@@ -66,10 +66,9 @@ def bytes_para_bits(lista_bytes):
 
 
 # ===========================================================================
-# 1) ENQUADRAMENTO
-#    Cada função de TX recebe uma LISTA DE PAYLOADS (cada payload é uma
-#    lista de bits alinhada em bytes) e devolve o fluxo único de bits.
-#    Cada função de RX faz o inverso: fluxo de bits -> lista de payloads.
+# 1) enquadramento
+#    no tx, cada função recebe payloads e devolve um fluxo único de bits.
+#    no rx, cada função faz o caminho inverso.
 # ===========================================================================
 
 # ------------------------- contagem de caracteres -------------------------
@@ -96,8 +95,7 @@ def desenquadrar_contagem(bits):
         n_bytes = bits_para_bytes(bits[pos:pos + 8])[0]   # lê o cabeçalho
         pos += 8
         if n_bytes == 0:
-            # Byte 0x00 não é um quadro válido: é padding inserido pela
-            # modulação (QPSK/16-QAM completam o fluxo com zeros). Paramos.
+            # byte 0x00 indica padding da portadora; não é quadro real.
             break
         fim = pos + n_bytes * 8
         if fim > len(bits):
@@ -107,7 +105,7 @@ def desenquadrar_contagem(bits):
     return payloads
 
 
-# ------------------- FLAGs com inserção de bytes (byte stuffing) ----------
+# ------------------- flags com inserção de bytes (byte stuffing) ----------
 def enquadrar_bytes(payloads):
     """Quadro = FLAG + payload_com_escape + FLAG.
 
@@ -141,12 +139,12 @@ def desenquadrar_bytes(bits):
             if byte == FLAG_BYTE:                # achou o início de um quadro
                 dentro, atual = True, []
             continue
-        if escapado:                             # byte após ESC: sempre dado
+        if escapado:                             # byte após esc: sempre dado
             atual.append(byte)
             escapado = False
         elif byte == ESC_BYTE:
             escapado = True                      # marca p/ aceitar o próximo
-        elif byte == FLAG_BYTE:                  # FLAG de fechamento
+        elif byte == FLAG_BYTE:                  # flag de fechamento
             if atual:                            # ignora quadros vazios
                 payloads.append(bytes_para_bits(atual))
             dentro = False
@@ -155,7 +153,7 @@ def desenquadrar_bytes(bits):
     return payloads
 
 
-# -------------------- FLAGs com inserção de bits (bit stuffing) -----------
+# -------------------- flags com inserção de bits (bit stuffing) -----------
 def enquadrar_bits(payloads):
     """Quadro = FLAG(01111110) + payload_stuffed + FLAG.
 
@@ -197,7 +195,7 @@ def desenquadrar_bits(bits):
         if j + 8 > n:                            # não há fechamento: descarta
             break
 
-        # Remove o stuffing: o 0 que vem depois de cinco 1s é descartado.
+        # remove o stuffing: o 0 depois de cinco 1s é descartado.
         payload, uns, k = [], 0, i + 8
         while k < j:
             bit = bits[k]
@@ -222,20 +220,19 @@ def desenquadrar_bits(bits):
 
 
 # ===========================================================================
-# 2) DETECÇÃO DE ERROS
-#    Funções "adicionar_*" anexam o EDC ao FINAL do payload (TX).
-#    Funções "verificar_*" devolvem (payload_sem_edc, ok: bool) (RX).
+# 2) detecção de erros
+#    adicionar_* anexa o edc ao fim do payload; verificar_* remove e valida.
 # ===========================================================================
 
 # ----------------------------- paridade par -------------------------------
 def adicionar_paridade_par(bits):
-    # Anexa 1 byte: 7 zeros + o bit de paridade par de todo o payload.
+    # anexa 1 byte: 7 zeros + o bit de paridade par do payload.
     paridade = sum(bits) % 2                     # 1 se nº de 1s for ímpar
     return bits + [0] * 7 + [paridade]
 
 
 def verificar_paridade_par(bits):
-    # Recalcula a paridade: a soma dos bits deve ser par.
+    # recalcula a paridade: a soma dos bits deve ser par.
     if len(bits) < 8:
         return bits, False
     ok = (sum(bits) % 2) == 0
@@ -250,14 +247,14 @@ def soma_complemento1(palavras):
     soma = 0
     for palavra in palavras:
         soma += palavra
-        # (soma & 0xFFFF) mantém só os 16 bits baixos
+        # (soma & 0xffff) mantém só os 16 bits baixos
         # (soma >> 16) pega o carry que "estourou" os 16 bits e soma de volta
         soma = (soma & 0xFFFF) + (soma >> 16)
     return soma
 
 
 def bits_para_palavras16(bits):
-    # Agrupa os bits em palavras de 16 bits, completando com zeros se necessário
+    # agrupa os bits em palavras de 16 bits, completando com zeros se necessário
     bits = bits + [0] * ((-len(bits)) % 16)    
     palavras = []
     for i in range(0, len(bits), 16):
@@ -271,7 +268,7 @@ def bits_para_palavras16(bits):
 
 
 def adicionar_checksum(bits):
-    #Anexa 2 bytes com o complemento de 1 da soma das palavras de 16 bits.
+    # anexa 2 bytes com o complemento de 1 da soma das palavras de 16 bits.
 
     soma = soma_complemento1(bits_para_palavras16(bits))
     checksum = (~soma) & 0xFFFF                  # sem o ffff ia virar um num negativo e nao complemento de 1
@@ -280,7 +277,7 @@ def adicionar_checksum(bits):
 
 
 def verificar_checksum(bits):
-    #Soma payload + checksum em complemento de 1 e compara com 0xFFFF
+    # soma payload + checksum em complemento de 1 e compara com 0xffff.
     if len(bits) < 16:
         return bits, False
     payload = bits[:-16]
@@ -288,12 +285,9 @@ def verificar_checksum(bits):
     return payload, total == 0xFFFF
 
 
-# -------------------------------- CRC-32 ----------------------------------
-# Polinômio IEEE 802: 0x04C11DB7. Aqui usamos sua forma REFLETIDA
-# (0xEDB88320) com inicialização 0xFFFFFFFF e XOR final, que é EXATAMENTE
-# o CRC-32 padrão (Ethernet/zlib). Vantagem: dá para validar a nossa
-# implementação contra valores conhecidos, ex.: CRC32("123456789") deve
-# resultar em 0xCBF43926. A implementação é bit a bit, sem bibliotecas.
+# -------------------------------- crc-32 ----------------------------------
+# implementação bit a bit do crc-32 ieee 802, sem zlib.
+# o vetor "123456789" é usado nos testes para conferir 0xcbf43926.
 POLI_CRC32_REFLETIDO = 0xEDB88320
 
 
@@ -304,18 +298,18 @@ def calcular_crc32(bits):
     nossa convenção de lista é MSB primeiro, percorremos cada grupo de 8
     bits de trás para frente.
     """
-    crc = 0xFFFFFFFF                             # registrador inicia em todos 1s (padrão IEEE)
+    crc = 0xFFFFFFFF                             # registrador começa em todos 1s
     for i in range(0, len(bits), 8):
         byte = bits[i:i + 8]
-        for bit in reversed(byte):               # LSB do byte primeiro (algoritmo refletido)
-            # (crc ^ bit) & 1: XOR do bit de entrada com o bit mais baixo do registrador
-            # se o resultado for 1, o "bit saiu pelo topo": aplica XOR com o polinômio
+        for bit in reversed(byte):               # bit menos significativo primeiro
+            # (crc ^ bit) & 1 compara a entrada com o bit baixo do registrador
+            # se o resultado for 1, aplica xor com o polinômio
             # se for 0: apenas desloca (o bit se cancela sem deixar rastro)
             if (crc ^ bit) & 1:
                 crc = (crc >> 1) ^ POLI_CRC32_REFLETIDO
             else:
                 crc >>= 1
-    return crc ^ 0xFFFFFFFF                      # XOR final inverte todos os bits (padrão)
+    return crc ^ 0xFFFFFFFF                      # xor final do padrão crc-32
 
 
 def adicionar_crc32(bits):
@@ -331,20 +325,18 @@ def verificar_crc32(bits):
         return bits, False
     payload = bits[:-32]
     recebido = 0
-    for b in bits[-32:]:                         # remonta o CRC recebido
+    for b in bits[-32:]:                         # remonta o crc recebido
         recebido = (recebido << 1) | b
     return payload, calcular_crc32(payload) == recebido
 
 
 # ===========================================================================
-# 3) CORREÇÃO DE ERROS - HAMMING(8,4) estendido (SECDED)
+# 3) correção de erros - hamming(8,4) estendido
 #
-# Cada bloco de 4 bits de dados (d1 d2 d3 d4) vira 8 bits:
+# cada bloco de 4 bits de dados vira 8 bits:
 #     posição:  1   2   3   4   5   6   7   8
 #     conteúdo: p1  p2  d1  p4  d2  d3  d4  p0
-# onde p1, p2 e p4 são paridades pares dos grupos clássicos de Hamming e
-# p0 é a paridade geral dos 7 primeiros bits (permite DETECTAR erro duplo
-# além de CORRIGIR erro simples).
+# onde p1, p2 e p4 são paridades pares e p0 é a paridade geral.
 # ===========================================================================
 def codificar_hamming(bits):
     """Codifica o payload em blocos Hamming(8,4). 1 byte vira 2 bytes."""
@@ -361,7 +353,7 @@ def codificar_hamming(bits):
         p4 = (d2 + d3 + d4) % 2
         # layout das posições 1-7: p1 p2 d1 p4 d2 d3 d4
         bloco = [p1, p2, d1, p4, d2, d3, d4]
-        p0 = sum(bloco) % 2                      # paridade geral de todos os 7 bits (SECDED)
+        p0 = sum(bloco) % 2                      # paridade geral dos 7 primeiros bits
         saida += bloco + [p0]
     return saida
 
@@ -388,21 +380,21 @@ def decodificar_hamming(bits):
         sindrome = s4 * 4 + s2 * 2 + s1
         par_geral = sum(bloco) % 2               # paridade de todos os 8 bits (incluindo p0)
         if sindrome != 0 and par_geral == 1:
-            # erro SIMPLES: síndrome aponta a posição exata, inverte o bit com XOR
+            # erro simples: a síndrome aponta a posição exata
             bloco[sindrome - 1] ^= 1
             corrigidos += 1
         elif sindrome == 0 and par_geral == 1:
             # erro apenas no bit p0 (paridade geral): dados intactos
             corrigidos += 1
         elif sindrome != 0 and par_geral == 0:
-            # erro DUPLO: detectado pela paridade geral, mas síndrome não pode corrigir
+            # erro duplo: detectado, mas não corrigível
             erro_duplo = True
         dados += [bloco[2], bloco[4], bloco[5], bloco[6]]   # extrai d1 d2 d3 d4
     return dados, corrigidos, erro_duplo
 
 
 # ===========================================================================
-# ORQUESTRAÇÃO DA CAMADA (chamada pelo Simulador)
+# orquestração da camada
 # ===========================================================================
 ENQUADRAR = {"contagem": enquadrar_contagem,
               "bytes": enquadrar_bytes,
@@ -428,11 +420,10 @@ def transmitir(bits, config):
     """
     tam_bits = config["tam_max_quadro"] * 8      # tamanho do bloco de dados em bits
 
-    # Validação do limite da contagem de caracteres: o payload final
-    # (dados + EDC, possivelmente dobrado pelo Hamming) cabe em 255 bytes?
+    # valida se o quadro final ainda cabe no byte de contagem.
     tam_quadro_final = config["tam_max_quadro"] + TAMANHO_EDC[config["deteccao"]]
     if config["correcao"] == "hamming":
-        tam_quadro_final *= 2                    # Hamming(8,4) dobra o tamanho
+        tam_quadro_final *= 2                    # hamming(8,4) dobra o tamanho
     if config["enquadramento"] == "contagem" and tam_quadro_final > 255:
         raise ValueError("Quadro final excede 255 bytes: reduza o "
                          "tamanho máximo de quadro.")
@@ -440,9 +431,9 @@ def transmitir(bits, config):
     payloads = []
     for i in range(0, len(bits), tam_bits):      # divide a mensagem em blocos
         bloco = bits[i:i + tam_bits]
-        bloco = ADICIONAR_EDC[config["deteccao"]](bloco)   # 1º: anexa o EDC
+        bloco = ADICIONAR_EDC[config["deteccao"]](bloco)   # 1º: anexa o edc
         if config["correcao"] == "hamming":                  # 2º: protege tudo
-            bloco = codificar_hamming(bloco)                 #     com Hamming
+            bloco = codificar_hamming(bloco)                 #     protege com hamming
         payloads.append(bloco)
     return ENQUADRAR[config["enquadramento"]](payloads)     # 3º: enquadra
 
@@ -463,7 +454,7 @@ def receber(bits, config):
             payload, info["corrigidos"], info["erro_duplo"] = \
                 decodificar_hamming(payload)
         payload, info["edc_ok"] = \
-            VERIFICAR_EDC[config["deteccao"]](payload)      # 3º: verifica EDC
+            VERIFICAR_EDC[config["deteccao"]](payload)      # 3º: verifica o edc
         bits_app += payload
         relatorio.append(info)
     return bits_app, relatorio

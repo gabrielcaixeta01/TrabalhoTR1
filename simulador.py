@@ -25,8 +25,8 @@ CONFIG_PADRAO = {
     "correcao": "hamming",      # nenhum | hamming
     "mod_digital": "nrz",       # nrz | manchester | bipolar
     "mod_portadora": "qpsk",    # nenhuma | ask | fsk | qpsk | 16qam
-    "ruido_media": 0.0,         # média (x) do ruído gaussiano, em Volts
-    "ruido_sigma": 0.1,         # desvio padrão (sigma) do ruído, em Volts
+    "ruido_media": 0.0,         # média do ruído gaussiano, em volts
+    "ruido_sigma": 0.1,         # desvio padrão do ruído, em volts
 }
 
 
@@ -38,22 +38,20 @@ def _rotina_tx(config, meio, resultados):
     diagrama de interface do enunciado).
     """
 
-    # Camada de aplicação: texto -> bits 
+    # camada de aplicação: texto -> bits
     bits_app = camada_aplicacao.texto_para_bits(config["texto"])
     resultados["tx_bits_aplicacao"] = bits_app
 
-    # Camada de enlace: EDC + (Hamming) + enquadramento
+    # camada de enlace: edc + hamming + enquadramento
     bits_enlace = camada_enlace.transmitir(bits_app, config)
     resultados["tx_bits_enlace"] = bits_enlace
 
-    # Camada física 
-    # 1º estágio: codificação banda-base
+    # camada física: primeiro gera o sinal banda-base
     sinal_banda_base = camada_fisica.modular_digital(
         bits_enlace, config["mod_digital"])
     resultados["tx_sinal_banda_base"] = sinal_banda_base
 
-    # 2º estágio: modulação por portadora (opcional). Quando habilitada,
-    # é o sinal modulado que efetivamente trafega pelo meio.
+    # se houver portadora, esse passa a ser o sinal enviado ao meio
     if config["mod_portadora"] != "nenhuma":
         sinal_tx = camada_fisica.modular_portadora(
             bits_enlace, config["mod_portadora"])
@@ -61,7 +59,7 @@ def _rotina_tx(config, meio, resultados):
         sinal_tx = sinal_banda_base
     resultados["tx_sinal_transmitido"] = sinal_tx
 
-    # Entrega o sinal ao meio de comunicação (a fila conecta as threads).
+    # entrega o sinal ao meio de comunicação pela fila
     meio.put(sinal_tx)
 
 
@@ -71,29 +69,28 @@ def _rotina_rx(config, meio, resultados):
     sinal_rx = meio.get()
     resultados["rx_sinal_recebido"] = sinal_rx
 
-    # Camada física: recupera os bits
+    # camada física: recupera os bits do sinal recebido
     if config["mod_portadora"] != "nenhuma":
         bits_rx = camada_fisica.demodular_portadora(
             sinal_rx, config["mod_portadora"])
         
-        # Reconstrói o sinal banda-base a partir dos bits demodulados,
-        # apenas para exibição do estágio intermediário na GUI.
+        # reconstrói o banda-base para mostrar o estágio intermediário na gui
         resultados["rx_sinal_banda_base"] = camada_fisica.modular_digital(
             bits_rx, config["mod_digital"])
         
     else:
-        # Sem portadora: decodifica o banda-base ruidoso diretamente.
+        # sem portadora, o receptor demodula o banda-base ruidoso direto
         resultados["rx_sinal_banda_base"] = sinal_rx
         bits_rx = camada_fisica.demodular_digital(
             sinal_rx, config["mod_digital"])
     resultados["rx_bits_fisica"] = bits_rx
 
-    # Camada de enlace: desenquadra, corrige e verifica
+    # camada de enlace: desenquadra, corrige e verifica
     bits_app, relatorio = camada_enlace.receber(bits_rx, config)
     resultados["rx_bits_aplicacao"] = bits_app
     resultados["rx_relatorio_quadros"] = relatorio
 
-    # Camada de aplicação: bits -> texto
+    # camada de aplicação: bits -> texto
     resultados["rx_texto"] = camada_aplicacao.bits_para_texto(bits_app)
 
 
@@ -110,8 +107,7 @@ def executar_simulacao(config):
     th_tx.start()
     th_rx.start()
 
-    # CANAL: pega o sinal limpo do TX, soma o ruído n(x, sigma) e entrega
-    # ao RX. É o único ponto de contato entre as duas threads.
+    # canal: soma ruído ao sinal limpo e entrega ao receptor
     sinal_limpo = fila_tx.get()
     sinal_ruidoso = meio_comunicacao.transmitir(
         sinal_limpo, config["ruido_media"], config["ruido_sigma"])
@@ -120,7 +116,7 @@ def executar_simulacao(config):
     th_tx.join()
     th_rx.join()
 
-    # Métricas extras para a GUI/relatório: potências e SNR.
+    # métricas usadas na interface e no relatório
     p_sinal = meio_comunicacao.potencia_media(sinal_limpo)
     ruido = [r - s for r, s in zip(sinal_ruidoso, sinal_limpo)]
     p_ruido = meio_comunicacao.potencia_media(ruido)

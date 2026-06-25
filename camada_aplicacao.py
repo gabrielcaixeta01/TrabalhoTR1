@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 def texto_para_bits(texto):
-    # Converte uma string em uma lista de bits (codificador em bits do TX).
-    # A -> byte 0x41 -> [0, 1, 0, 0, 0, 0, 0, 1]
+    # converte uma string em uma lista de bits no transmissor.
+    # exemplo: "a" -> byte 0x61 -> oito bits.
     
     bits = []
     for byte in texto.encode("utf-8"):          
@@ -11,7 +11,7 @@ def texto_para_bits(texto):
 
 
 def bits_para_texto(bits):
-    # Converte uma lista de bits de volta para string (conversor do RX).
+    # converte os bits recuperados pelo receptor de volta para texto.
     
     n_bytes = len(bits) // 8 
     dados = bytearray() 
@@ -22,4 +22,4 @@ def bits_para_texto(bits):
             byte = (byte << 1) | bit           
         dados.append(byte)
 
-    return dados.decode("utf-8", errors="replace") # esse replace insere um <EFBFBD> ao inves de travar o programa
+    return dados.decode("utf-8", errors="replace")  # evita travar quando o ruído corrompe algum byte

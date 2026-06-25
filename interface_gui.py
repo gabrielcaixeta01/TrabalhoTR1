@@ -7,30 +7,22 @@ automaticamente em ambientes sem GTK instalado (ex.: Windows sem sudo).
 
 Dependências para GTK (Linux):
   sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0
-  pip install matplotlib
 """
 
-# ── Detecta qual backend de GUI está disponível ──────────────────────────────
 try:
     import gi
     gi.require_version("Gtk", "3.0")
     from gi.repository import Gtk, GLib, Gdk, Pango
-    from matplotlib.backends.backend_gtk3agg import (
-        FigureCanvasGTK3Agg as FigureCanvas)
     BACKEND = "gtk"
 except Exception:
     import tkinter as tk
-    from tkinter import ttk
-    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg as FigureCanvas
     BACKEND = "tk"
 
-from matplotlib.figure import Figure
 import camada_enlace
 import camada_fisica
 import simulador
 
 
-# ── Opções dos campos de seleção ─────────────────────────────────────────────
 OPCOES_ENQUADRAMENTO = [("Contagem de caracteres", "contagem"),
                         ("FLAGs + inserção de bytes", "bytes"),
                         ("FLAGs + inserção de bits", "bits")]
@@ -250,10 +242,119 @@ def formatar_diagnostico(diagnostico, resultado, config):
     return "\n".join(linhas)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# IMPLEMENTAÇÃO GTK 3  (usada no Linux — requisito do trabalho)
-# ═════════════════════════════════════════════════════════════════════════════
+def amostrar_para_grafico(sinal, limite=MAX_AMOSTRAS_GRAFICO):
+    if not sinal:
+        return []
+    if len(sinal) <= limite:
+        return list(sinal)
+    passo = len(sinal) / limite
+    return [sinal[int(i * passo)] for i in range(limite)]
+
+
+def limites_series(series):
+    valores = []
+    for _, sinal in series:
+        valores.extend(amostrar_para_grafico(sinal))
+    if not valores:
+        return -1.0, 1.0
+    minimo = min(valores)
+    maximo = max(valores)
+    if minimo == maximo:
+        folga = 1.0 if minimo == 0 else abs(minimo) * 0.25
+        return minimo - folga, maximo + folga
+    folga = (maximo - minimo) * 0.12
+    return minimo - folga, maximo + folga
+
+
+def formatar_volts(valor):
+    return f"{valor:.2f} V"
+
+
 if BACKEND == "gtk":
+
+    class GraficoSinal(Gtk.DrawingArea):
+        def __init__(self):
+            super().__init__()
+            self.series = []
+            self.set_size_request(-1, 285)
+            self.connect("draw", self.ao_desenhar)
+
+        def set_series(self, series):
+            self.series = series
+            self.queue_draw()
+
+        def ao_desenhar(self, _widget, cr):
+            largura = max(1, self.get_allocated_width())
+            altura = max(1, self.get_allocated_height())
+            cr.set_source_rgb(1.0, 1.0, 1.0)
+            cr.paint()
+
+            if not self.series:
+                self.desenhar_texto(cr, 16, 28, "sem sinal para exibir", 0.35)
+                return False
+
+            topo = 26
+            margem_baixo = 22
+            espaco = 22
+            altura_bloco = (altura - topo - margem_baixo - espaco) / len(self.series)
+            minimo, maximo = limites_series(self.series)
+            faixa = maximo - minimo or 1.0
+
+            for indice, (titulo, sinal) in enumerate(self.series):
+                y0 = topo + indice * (altura_bloco + espaco)
+                self.desenhar_bloco(cr, titulo, sinal, 14, y0, largura - 28,
+                                    altura_bloco, minimo, faixa)
+            return False
+
+        def desenhar_bloco(self, cr, titulo, sinal, x, y, largura, altura,
+                           minimo, faixa):
+            amostras = amostrar_para_grafico(sinal)
+            self.desenhar_texto(cr, x, y - 7, titulo, 0.08, tamanho=11)
+
+            cr.set_line_width(1)
+            cr.set_source_rgb(0.89, 0.92, 0.96)
+            for k in range(4):
+                yy = y + altura * k / 3
+                cr.move_to(x, yy)
+                cr.line_to(x + largura, yy)
+                cr.stroke()
+
+            zero_y = y + altura - ((0 - minimo) / faixa) * altura
+            if y <= zero_y <= y + altura:
+                cr.set_source_rgb(0.78, 0.82, 0.88)
+                cr.move_to(x, zero_y)
+                cr.line_to(x + largura, zero_y)
+                cr.stroke()
+
+            self.desenhar_texto(cr, x + largura - 64, y + 11,
+                                formatar_volts(minimo + faixa), 0.35,
+                                tamanho=9)
+            self.desenhar_texto(cr, x + largura - 64, y + altura - 4,
+                                formatar_volts(minimo), 0.35, tamanho=9)
+
+            if len(amostras) < 2:
+                self.desenhar_texto(cr, x + 8, y + altura / 2,
+                                    "sem amostras", 0.35)
+                return
+
+            cr.set_source_rgb(0.06, 0.46, 0.43)
+            cr.set_line_width(1.35)
+            for idx, valor in enumerate(amostras):
+                xx = x + largura * idx / (len(amostras) - 1)
+                yy = y + altura - ((valor - minimo) / faixa) * altura
+                if idx == 0:
+                    cr.move_to(xx, yy)
+                else:
+                    cr.line_to(xx, yy)
+            cr.stroke()
+
+        @staticmethod
+        def desenhar_texto(cr, x, y, texto, cinza, tamanho=10):
+            cr.set_source_rgb(cinza, cinza, cinza + 0.04)
+            cr.select_font_face("Sans")
+            cr.set_font_size(tamanho)
+            cr.move_to(x, y)
+            cr.show_text(texto)
 
     class JanelaSimulador(Gtk.Window):
         """Janela principal do simulador (GTK 3)."""
@@ -383,6 +484,15 @@ if BACKEND == "gtk":
                 color: #0f172a;
                 font-weight: 700;
             }
+            notebook {
+                background: #ffffff;
+                border: 1px solid #dbe3ef;
+                border-radius: 8px;
+            }
+            notebook tab {
+                min-height: 32px;
+                padding: 4px 12px;
+            }
             """
             provider = Gtk.CssProvider()
             provider.load_from_data(css)
@@ -421,7 +531,7 @@ if BACKEND == "gtk":
             cartao.add(conteudo)
             return cartao, conteudo
 
-        # ── Construção ────────────────────────────────────────────────────
+        # montagem da tela
 
         def montar_painel_config(self):
             cartao, caixa = self.novo_card("sidebar")
@@ -595,15 +705,15 @@ if BACKEND == "gtk":
             titulo = self.label("Processamento por fase", "title")
             conteudo.pack_start(titulo, False, False, 0)
 
-            grade = Gtk.Grid(column_spacing=14, row_spacing=8)
+            grade = Gtk.Grid(column_spacing=8, row_spacing=8)
             conteudo.pack_start(grade, False, True, 0)
 
             colunas = [
-                ("FASE", 18),
-                ("ENTRADA", 10),
-                ("SAÍDA", 11),
-                ("ADICIONOU", 9),
-                ("DIAGNÓSTICO", 24),
+                ("FASE", 16),
+                ("ENTRADA", 9),
+                ("SAÍDA", 10),
+                ("ADICIONOU", 8),
+                ("DIAGNÓSTICO", 20),
             ]
             for coluna, (texto, largura) in enumerate(colunas):
                 cabecalho = self.label(texto, "phase-header")
@@ -613,11 +723,11 @@ if BACKEND == "gtk":
             for linha in range(1, 9):
                 labels = {}
                 for coluna, (chave, largura, classe) in enumerate([
-                    ("nome", 18, "phase-cell"),
-                    ("entrada", 10, "phase-cell"),
-                    ("saida", 11, "phase-cell"),
-                    ("delta", 9, "phase-zero"),
-                    ("detalhe", 24, "phase-cell"),
+                    ("nome", 16, "phase-cell"),
+                    ("entrada", 9, "phase-cell"),
+                    ("saida", 10, "phase-cell"),
+                    ("delta", 8, "phase-zero"),
+                    ("detalhe", 20, "phase-cell"),
                 ]):
                     label = self.label("-", classe, wrap=True)
                     label.set_width_chars(largura)
@@ -628,21 +738,21 @@ if BACKEND == "gtk":
             return cartao
 
         def montar_resultados_duplos(self):
-            linha = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-            linha.set_homogeneous(True)
+            abas = Gtk.Notebook()
+            abas.set_hexpand(True)
+            abas.set_vexpand(True)
 
-            card_tx, self.txt_tx, self.fig_tx, self.canvas_tx = \
+            card_tx, self.txt_tx, self.grafico_tx = \
                 self.criar_cartao_resultado("Transmissor (Tx)")
-            linha.pack_start(card_tx, True, True, 0)
+            abas.append_page(card_tx, self.label("Transmissor (Tx)", "field-label"))
 
-            card_rx, self.txt_rx, self.fig_rx, self.canvas_rx = \
+            card_rx, self.txt_rx, self.grafico_rx = \
                 self.criar_cartao_resultado("Receptor (Rx)")
-            linha.pack_start(card_rx, True, True, 0)
-            return linha
+            abas.append_page(card_rx, self.label("Receptor (Rx)", "field-label"))
+            return abas
 
         def criar_cartao_resultado(self, titulo):
             cartao, conteudo = self.novo_card("card")
-            cartao.set_size_request(340, -1)
             conteudo.pack_start(self.label(titulo, "title"), False, False, 0)
 
             texto = self.nova_caixa_texto()
@@ -652,11 +762,9 @@ if BACKEND == "gtk":
             rolagem.add(texto)
             conteudo.pack_start(rolagem, False, True, 0)
 
-            figura = Figure(figsize=(6.4, 3.1), facecolor="#ffffff")
-            canvas = FigureCanvas(figura)
-            canvas.set_size_request(-1, 285)
-            conteudo.pack_start(canvas, True, True, 0)
-            return cartao, texto, figura, canvas
+            grafico = GraficoSinal()
+            conteudo.pack_start(grafico, True, True, 0)
+            return cartao, texto, grafico
 
         @staticmethod
         def nova_caixa_texto():
@@ -665,7 +773,7 @@ if BACKEND == "gtk":
             tv.get_style_context().add_class("console")
             return tv
 
-        # ── Lógica ────────────────────────────────────────────────────────
+        # lógica da simulação
 
         def inicializar_resultados(self):
             self.definir_banner(
@@ -789,9 +897,11 @@ if BACKEND == "gtk":
                 f"{bits_str(resultado['tx_bits_enlace'])}\n"
             )
             self.txt_tx.get_buffer().set_text(texto_tx)
-            self.plotar(self.fig_tx, self.canvas_tx,
-                        ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
-                        ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]))
+            self.plotar(
+                self.grafico_tx,
+                ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
+                ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]),
+            )
 
             linhas_quadros = "\n".join(
                 f"  Quadro {q['quadro']}: "
@@ -810,9 +920,11 @@ if BACKEND == "gtk":
                 f"SAÍDA DE TEXTO:\n{resultado['rx_texto']}\n"
             )
             self.txt_rx.get_buffer().set_text(texto_rx)
-            self.plotar(self.fig_rx, self.canvas_rx,
-                        ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
-                        ("Banda-base reconstruído (Rx)", resultado["rx_sinal_banda_base"]))
+            self.plotar(
+                self.grafico_rx,
+                ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
+                ("Banda-base reconstruído (Rx)", resultado["rx_sinal_banda_base"]),
+            )
 
             diagnostico = diagnosticar_camadas(
                 resultado["tx_bits_aplicacao"], resultado, config)
@@ -827,26 +939,8 @@ if BACKEND == "gtk":
                 f"Texto recuperado {'CORRETAMENTE' if ok else 'COM DIFERENÇAS'}.")
 
         @staticmethod
-        def plotar(figura, canvas, *series):
-            figura.clear()
-            figura.patch.set_facecolor("#ffffff")
-            num_series = len(series)
-            for k, (titulo, sinal) in enumerate(series, start=1):
-                eixo = figura.add_subplot(num_series, 1, k)
-                eixo.set_facecolor("#ffffff")
-                eixo.plot(
-                    sinal[:MAX_AMOSTRAS_GRAFICO],
-                    linewidth=0.9,
-                    color="#0f766e",
-                )
-                eixo.set_title(titulo, fontsize=9, color="#0f172a", loc="left")
-                eixo.set_ylabel("V", fontsize=8, color="#475569")
-                eixo.tick_params(labelsize=7, colors="#475569")
-                eixo.grid(True, color="#e2e8f0", linewidth=0.7)
-                for spine in eixo.spines.values():
-                    spine.set_color("#cbd5e1")
-            figura.subplots_adjust(hspace=0.55, top=0.92, bottom=0.12)
-            canvas.draw()
+        def plotar(grafico, *series):
+            grafico.set_series(list(series))
 
         def executar(self):
             self.show_all()
@@ -855,7 +949,7 @@ if BACKEND == "gtk":
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# IMPLEMENTAÇÃO TKINTER  (fallback automático quando GTK não está disponível)
+# implementação tkinter para fallback quando gtk não está disponível
 # ═════════════════════════════════════════════════════════════════════════════
 else:
 
@@ -868,6 +962,71 @@ else:
     COR_BOTAO = "#2563eb"
     COR_BOTAO_ATIVO = "#1d4ed8"
     COR_LINHA = "#60a5fa"
+
+    class GraficoSinalTk(tk.Canvas):
+        def __init__(self, parent):
+            super().__init__(parent, bg=COR_PAINEL, highlightthickness=0,
+                             height=285)
+            self.series = []
+            self.bind("<Configure>", lambda _evento: self.redesenhar())
+
+        def set_series(self, series):
+            self.series = series
+            self.redesenhar()
+
+        def redesenhar(self):
+            self.delete("all")
+            largura = max(1, self.winfo_width())
+            altura = max(1, self.winfo_height())
+            if not self.series:
+                self.create_text(16, 24, text="sem sinal para exibir",
+                                 anchor="w", fill=COR_TEXTO_SECUNDARIO)
+                return
+
+            topo = 26
+            margem_baixo = 22
+            espaco = 22
+            altura_bloco = (altura - topo - margem_baixo - espaco) / len(self.series)
+            minimo, maximo = limites_series(self.series)
+            faixa = maximo - minimo or 1.0
+
+            for indice, (titulo, sinal) in enumerate(self.series):
+                y0 = topo + indice * (altura_bloco + espaco)
+                self.desenhar_bloco(titulo, sinal, 14, y0, largura - 28,
+                                    altura_bloco, minimo, faixa)
+
+        def desenhar_bloco(self, titulo, sinal, x, y, largura, altura,
+                           minimo, faixa):
+            amostras = amostrar_para_grafico(sinal)
+            self.create_text(x, y - 7, text=titulo, anchor="w",
+                             fill=COR_TEXTO, font=("Arial", 9, "bold"))
+            for k in range(4):
+                yy = y + altura * k / 3
+                self.create_line(x, yy, x + largura, yy, fill=COR_BORDA)
+
+            zero_y = y + altura - ((0 - minimo) / faixa) * altura
+            if y <= zero_y <= y + altura:
+                self.create_line(x, zero_y, x + largura, zero_y,
+                                 fill=COR_TEXTO_SECUNDARIO)
+
+            self.create_text(x + largura - 64, y + 10,
+                             text=formatar_volts(minimo + faixa), anchor="w",
+                             fill=COR_TEXTO_SECUNDARIO, font=("Arial", 8))
+            self.create_text(x + largura - 64, y + altura - 4,
+                             text=formatar_volts(minimo), anchor="w",
+                             fill=COR_TEXTO_SECUNDARIO, font=("Arial", 8))
+
+            if len(amostras) < 2:
+                self.create_text(x + 8, y + altura / 2, text="sem amostras",
+                                 anchor="w", fill=COR_TEXTO_SECUNDARIO)
+                return
+
+            pontos = []
+            for idx, valor in enumerate(amostras):
+                xx = x + largura * idx / (len(amostras) - 1)
+                yy = y + altura - ((valor - minimo) / faixa) * altura
+                pontos.extend([xx, yy])
+            self.create_line(*pontos, fill=COR_LINHA, width=2)
 
     class JanelaSimulador(tk.Tk):
         """Janela principal do simulador (tkinter — fallback sem GTK)."""
@@ -889,7 +1048,7 @@ else:
             self.set_texto(self.txt_tx, "Transmissor (Tx)\n\nClique em Transmitir para gerar bits e sinais.")
             self.set_texto(self.txt_rx, "Receptor (Rx)\n\nClique em Transmitir para recuperar a mensagem.")
 
-        # ── Construção ────────────────────────────────────────────────────
+        # montagem da tela
 
         def configurar_tema(self):
             """Define defaults legíveis no Tk antigo do macOS em modo escuro."""
@@ -1013,12 +1172,12 @@ else:
             tab_tx = tk.LabelFrame(painel, text="Transmissor (Tx)",
                                    bg=COR_PAINEL, fg=COR_TEXTO, padx=6, pady=6)
             tab_tx.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
-            self.txt_tx, self.fig_tx, self.canvas_tx = self.criarmontar_aba(tab_tx)
+            self.txt_tx, self.grafico_tx = self.criarmontar_aba(tab_tx)
 
             tab_rx = tk.LabelFrame(painel, text="Receptor (Rx)",
                                    bg=COR_PAINEL, fg=COR_TEXTO, padx=6, pady=6)
             tab_rx.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
-            self.txt_rx, self.fig_rx, self.canvas_rx = self.criarmontar_aba(tab_rx)
+            self.txt_rx, self.grafico_rx = self.criarmontar_aba(tab_rx)
 
         def criarmontar_aba(self, parent):
             txt_frame = tk.Frame(parent, bg=COR_PAINEL)
@@ -1034,14 +1193,12 @@ else:
             txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             scrollbar.config(command=txt.yview)
 
-            fig = Figure(figsize=(7, 4), facecolor=COR_PAINEL)
-            canvas = FigureCanvas(fig, master=parent)
-            canvas.get_tk_widget().configure(bg=COR_PAINEL, highlightthickness=0)
-            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            grafico = GraficoSinalTk(parent)
+            grafico.pack(fill=tk.BOTH, expand=True)
 
-            return txt, fig, canvas
+            return txt, grafico
 
-        # ── Lógica ────────────────────────────────────────────────────────
+        # lógica da simulação
 
         def ler_config(self):
             return {
@@ -1075,9 +1232,11 @@ else:
                 f"{bits_str(resultado['tx_bits_enlace'])}\n"
             )
             self.set_texto(self.txt_tx, texto_tx)
-            self.plotar(self.fig_tx, self.canvas_tx,
-                        ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
-                        ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]))
+            self.plotar(
+                self.grafico_tx,
+                ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
+                ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]),
+            )
 
             linhas_quadros = "\n".join(
                 f"  Quadro {q['quadro']}: "
@@ -1096,9 +1255,11 @@ else:
                 f"SAÍDA DE TEXTO:\n{resultado['rx_texto']}\n"
             )
             self.set_texto(self.txt_rx, texto_rx)
-            self.plotar(self.fig_rx, self.canvas_rx,
-                        ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
-                        ("Banda-base reconstruído (Rx)", resultado["rx_sinal_banda_base"]))
+            self.plotar(
+                self.grafico_rx,
+                ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
+                ("Banda-base reconstruído (Rx)", resultado["rx_sinal_banda_base"]),
+            )
 
             ok = (resultado["rx_texto"] == config["texto"])
             pot_sinal = resultado["potencia_sinal_w"]
@@ -1115,23 +1276,8 @@ else:
             widget.config(state=tk.DISABLED)
 
         @staticmethod
-        def plotar(figura, canvas, *series):
-            figura.clear()
-            figura.patch.set_facecolor(COR_PAINEL)
-            num_series = len(series)
-            for k, (titulo, sinal) in enumerate(series, start=1):
-                eixo = figura.add_subplot(num_series, 1, k)
-                eixo.set_facecolor(COR_PAINEL)
-                eixo.plot(sinal[:MAX_AMOSTRAS_GRAFICO], linewidth=0.9,
-                          color=COR_LINHA)
-                eixo.set_title(titulo, fontsize=9, color=COR_TEXTO)
-                eixo.set_ylabel("V", fontsize=8, color=COR_TEXTO_SECUNDARIO)
-                eixo.tick_params(labelsize=7, colors=COR_TEXTO_SECUNDARIO)
-                eixo.grid(True, color=COR_BORDA, linewidth=0.35, alpha=0.7)
-                for spine in eixo.spines.values():
-                    spine.set_color(COR_BORDA)
-            figura.tight_layout()
-            canvas.draw()
+        def plotar(grafico, *series):
+            grafico.set_series(list(series))
 
         def executar(self):
             self.mainloop()

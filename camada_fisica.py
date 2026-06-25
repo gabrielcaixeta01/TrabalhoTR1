@@ -25,21 +25,19 @@ que é a obtida fazendo XOR do NRZ com um clock SUBINDO (01):
 
 import math
 
-# ---------------------------------------------------------------------------
-# Parâmetros globais do simulador (em um só lugar para facilitar ajustes)
-# ---------------------------------------------------------------------------
-V = 1.0                      # amplitude de referência do sinal, em Volts
+# parâmetros globais do simulador, em um só lugar para facilitar ajustes
+V = 1.0                      # amplitude de referência do sinal, em volts
 AMOSTRAS_POR_BIT = 100       # resolução do sinal banda-base
 AMOSTRAS_POR_SIMBOLO = 100   # resolução de cada símbolo da portadora
 CICLOS_PORTADORA = 4         # ciclos de portadora por símbolo (nº inteiro!)
-CICLOS_FSK = (2, 4)          # FSK: f1 (bit 0) e f2 (bit 1), em ciclos/símbolo
-                             # Frequências inteiras e distintas mantêm as
-                             # portadoras ORTOGONAIS dentro do símbolo, o que
+CICLOS_FSK = (2, 4)          # fsk: f1 (bit 0) e f2 (bit 1), em ciclos/símbolo
+                             # frequências inteiras e distintas mantêm as
+                             # portadoras ortogonais dentro do símbolo, o que
                              # é essencial para a demodulação por correlação.
 
 
 # ===========================================================================
-# 1) MODULAÇÃO DIGITAL (BANDA-BASE)
+# 1) modulação digital em banda-base
 # ===========================================================================
 def modular_nrz_polar(bits):
     """NRZ-Polar: bit 1 -> +V constante; bit 0 -> -V constante."""
@@ -100,7 +98,7 @@ def modular_bipolar(bits):
     """Bipolar/AMI: bit 0 -> 0 V; bit 1 -> alterna entre +V e -V.
     A alternância elimina o nível DC médio da linha."""
     sinal = []
-    polaridade = V                               # próximo "1" será +V
+    polaridade = V                               # próximo "1" será +v
     for bit in bits:
         if bit == 0:
             sinal += [0.0] * AMOSTRAS_POR_BIT
@@ -124,14 +122,10 @@ def demodular_bipolar(sinal):
 
 
 # ===========================================================================
-# 2) MODULAÇÃO POR PORTADORA
+# 2) modulação por portadora
 #
-# Todas geram s(t) = I.cos(2*pi*f*t) - Q.sen(2*pi*f*t)  (representação I/Q),
-# onde o par (I, Q) é o ponto da constelação escolhido pelos bits.
-# A demodulação coerente recupera I e Q por correlação:
-#     I = (2/N) * soma( s[n] * cos(...) )      (idem para Q com -sen)
-# e então escolhe o ponto de constelação MAIS PRÓXIMO do (I, Q) medido -
-# é isso que dá robustez ao ruído.
+# todas geram s(t) = i.cos(2*pi*f*t) - q.sen(2*pi*f*t).
+# o receptor recupera i e q por correlação e escolhe o ponto mais próximo.
 # ===========================================================================
 def onda(i, q, ciclos):
     """Gera um símbolo de AMOSTRAS_POR_SIMBOLO amostras a partir do ponto
@@ -140,7 +134,7 @@ def onda(i, q, ciclos):
     N = AMOSTRAS_POR_SIMBOLO
     amostras = []
     for n in range(N):
-        # n/N é a fração do símbolo já percorrida (vai de 0 a quase 1);
+        # n sobre o total é a fração do símbolo já percorrida.
         # multiplicar por ciclos e 2.pi dá o ângulo da portadora nessa amostra.
         angulo = 2 * math.pi * ciclos * n / N
         amostras.append(i * math.cos(angulo) - q * math.sin(angulo))
@@ -155,7 +149,7 @@ def correlacionar(simbolo, ciclos):
     soma_cos = 0.0
     soma_sen = 0.0
     # enumerate dá (n, amostra): n é o índice da amostra, usado para calcular
-    # o ângulo da portadora naquele instante; amostra é o valor em Volts.
+    # o ângulo da portadora naquele instante; amostra é o valor em volts.
     for n, amostra in enumerate(simbolo):
         angulo = 2 * math.pi * ciclos * n / N
         soma_cos += amostra * math.cos(angulo)
@@ -191,7 +185,7 @@ def bits_do_ponto_mais_proximo(i, q, constelacao):
     return list(melhor_bits)
 
 
-# --------------------------------- ASK ------------------------------------
+# --------------------------------- ask ------------------------------------
 def modular_ask(bits):
     """ASK (on-off keying): bit 1 -> portadora com amplitude V;
     bit 0 -> ausência de portadora (0 V)."""
@@ -218,7 +212,7 @@ def demodular_ask(sinal):
     return bits
 
 
-# --------------------------------- FSK ------------------------------------
+# --------------------------------- fsk ------------------------------------
 def modular_fsk(bits):
     """FSK: bit 0 -> portadora de frequência f1; bit 1 -> frequência f2.
     A amplitude é sempre V; só a frequência muda."""
@@ -251,10 +245,10 @@ def demodular_fsk(sinal):
     return bits
 
 
-# --------------------------------- QPSK -----------------------------------
-# Mapeamento Gray (2 bits/símbolo): símbolos vizinhos diferem em 1 só bit,
+# --------------------------------- qpsk -----------------------------------
+# mapeamento gray: símbolos vizinhos diferem em 1 só bit,
 # minimizando bits errados quando o ruído empurra para o vizinho.
-#   dibit : fase      (I, Q) = (cos, sen) * V/sqrt(2)
+#   dibit : fase      (i, q) = (cos, sen) * v/sqrt(2)
 #   00    : 45 graus   (+a, +a)
 #   01    : 135 graus  (-a, +a)
 #   11    : 225 graus  (-a, -a)
@@ -286,11 +280,11 @@ def demodular_qpsk(sinal):
     return bits
 
 
-# -------------------------------- 16-QAM ----------------------------------
-# 4 bits/símbolo: os 2 primeiros escolhem o nível de I e os 2 últimos o
-# nível de Q, ambos com código Gray sobre os níveis {-3, -1, +1, +3}*(V/3).
+# -------------------------------- 16-qam ----------------------------------
+# 4 bits/símbolo: os 2 primeiros escolhem o nível de i e os 2 últimos o
+# nível de q, ambos com código gray sobre os níveis {-3, -1, +1, +3}*(v/3).
 NIVEIS_GRAY = {(0, 0): -3, (0, 1): -1, (1, 1): 1, (1, 0): 3}
-# dict inverso: dado um nível ({-3,-1,1,3}), recupera o par de bits Gray
+# dict inverso: dado um nível, recupera o par de bits gray
 BITS_DO_NIVEL = {nivel: bits for bits, nivel in NIVEIS_GRAY.items()} # só nao deixa explicito pq vai que muda o dict anterior
 ESCALA_QAM = V / 3                             
 
@@ -333,7 +327,7 @@ def demodular_16qam(sinal):
 
 
 # ===========================================================================
-# DESPACHO (interface única usada pelo Simulador e pela GUI)
+# despacho usado pelo simulador e pela gui
 # ===========================================================================
 MODULACOES_DIGITAIS = {"nrz": (modular_nrz_polar, demodular_nrz_polar),
                        "manchester": (modular_manchester, demodular_manchester),
