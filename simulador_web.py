@@ -63,18 +63,22 @@ HTML = r"""<!doctype html>
   <style>
     :root {
       color-scheme: light;
-      --bg: #eef2f7;
+      --bg: #eceff5;
       --panel: #ffffff;
       --panel-2: #f8fafc;
+      --panel-3: #f1f5f9;
       --text: #0f172a;
       --muted: #475569;
+      --soft: #94a3b8;
       --border: #cbd5e1;
       --blue: #1d4ed8;
       --blue-2: #2563eb;
+      --blue-soft: rgba(37, 99, 235, 0.14);
       --green: #047857;
+      --green-soft: rgba(4, 120, 87, 0.12);
       --red: #b91c1c;
       --trace: #0f766e;
-      --shadow: 0 14px 36px rgba(15, 23, 42, 0.12);
+      --shadow: 0 12px 28px rgba(15, 23, 42, 0.10);
       --mono: "SFMono-Regular", "Menlo", "Consolas", monospace;
       --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -93,12 +97,12 @@ HTML = r"""<!doctype html>
     .app {
       min-height: 100vh;
       display: grid;
-      grid-template-columns: minmax(280px, 340px) 1fr;
+      grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
       gap: 16px;
       padding: 16px;
     }
 
-    aside, main, .card {
+    aside, main, .card, .panel {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -108,45 +112,65 @@ HTML = r"""<!doctype html>
     aside {
       padding: 16px;
       overflow: auto;
+      align-self: start;
+      max-height: calc(100vh - 32px);
+      display: flex;
+      flex-direction: column;
     }
 
     main {
       padding: 16px;
       overflow: auto;
+      min-width: 0;
     }
 
     h1 {
       margin: 0 0 4px;
-      font-size: 22px;
+      font-size: 24px;
       line-height: 1.15;
       letter-spacing: 0;
     }
 
     .sub {
-      margin: 0 0 18px;
+      margin: 0 0 14px;
       color: var(--muted);
       line-height: 1.35;
     }
 
+    .section-label {
+      margin: 16px 0 8px;
+      color: var(--soft);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
     label {
       display: block;
-      margin: 12px 0 6px;
+      margin: 10px 0 6px;
       color: var(--text);
       font-weight: 700;
     }
 
     input, select, button, textarea {
       width: 100%;
-      border-radius: 6px;
+      border-radius: 8px;
       border: 1px solid var(--border);
       background: #ffffff;
       color: var(--text);
       font: inherit;
-      min-height: 38px;
+      min-height: 44px;
     }
 
     input, select, textarea {
-      padding: 8px 10px;
+      padding: 9px 12px;
+    }
+
+    textarea {
+      min-height: 82px;
+      resize: vertical;
+      line-height: 1.35;
     }
 
     input:focus, select:focus, textarea:focus, button:focus {
@@ -155,12 +179,12 @@ HTML = r"""<!doctype html>
     }
 
     button {
-      margin-top: 16px;
       border-color: var(--blue);
       background: var(--blue);
       color: #ffffff;
       font-weight: 800;
       cursor: pointer;
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.20);
     }
 
     button:hover { background: var(--blue-2); }
@@ -170,6 +194,7 @@ HTML = r"""<!doctype html>
       border-color: var(--border);
       background: #ffffff;
       color: var(--blue);
+      box-shadow: none;
     }
 
     button.secondary.active {
@@ -219,15 +244,40 @@ HTML = r"""<!doctype html>
     .live-pill {
       width: 100%;
       margin-top: 10px;
-      border-radius: 6px;
+      border-radius: 8px;
       font-family: var(--sans);
       font-weight: 700;
     }
 
     .live-pill.on {
       border-color: rgba(4, 120, 87, 0.45);
-      background: rgba(4, 120, 87, 0.12);
+      background: var(--green-soft);
       color: var(--green);
+    }
+
+    .side-summary {
+      margin-top: 14px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-2);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .controls-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .action-dock {
+      flex: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      background: var(--panel);
     }
 
     .grid {
@@ -249,20 +299,22 @@ HTML = r"""<!doctype html>
     }
 
     .status {
-      border-left: 5px solid var(--blue);
+      display: none;
+    }
+
+    .status.error {
+      display: block;
+      border-left: 5px solid var(--red);
       margin-bottom: 14px;
       padding: 12px 14px;
       background: var(--panel-2);
       color: var(--text);
     }
 
-    .status.ok { border-left-color: var(--green); }
-    .status.error { border-left-color: var(--red); }
-
     .metrics {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
       margin-bottom: 14px;
     }
 
@@ -270,16 +322,22 @@ HTML = r"""<!doctype html>
       background: var(--panel-2);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 10px;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
     }
 
     .metric b {
       display: block;
-      font-size: 18px;
-      margin-top: 2px;
+      margin-top: 6px;
+      color: var(--text);
+      font-size: 23px;
+      letter-spacing: 0;
     }
 
-    .diagnostics {
+    .inspection-panel {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -287,35 +345,60 @@ HTML = r"""<!doctype html>
       margin-bottom: 14px;
     }
 
-    .diagnostics h2 {
+    .inspection-panel h2 {
       margin: 0 0 10px;
-      font-size: 16px;
+      font-size: 22px;
     }
 
-    .diagnostics table {
+    .panel-view {
+      display: none;
+    }
+
+    .panel-view.active {
+      display: block;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      overflow-y: visible;
+      margin-top: 14px;
+    }
+
+    .inspection-panel table {
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
     }
 
-    .diagnostics th, .diagnostics td {
+    .inspection-panel th, .inspection-panel td {
       padding: 8px 10px;
       border-top: 1px solid var(--border);
       text-align: left;
       vertical-align: top;
     }
 
-    .diagnostics th {
+    .inspection-panel th {
       color: var(--muted);
       font-size: 12px;
       text-transform: uppercase;
     }
 
-    .diagnostics td:nth-child(2),
-    .diagnostics td:nth-child(3),
-    .diagnostics td:nth-child(4) {
+    .inspection-panel td:nth-child(2),
+    .inspection-panel td:nth-child(3),
+    .inspection-panel td:nth-child(4) {
       font-family: var(--mono);
-      white-space: nowrap;
+      white-space: normal;
+    }
+
+    .table-text {
+      font-family: var(--sans);
+      font-weight: 800;
+    }
+
+    .phase-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
     }
 
     .delta {
@@ -332,7 +415,7 @@ HTML = r"""<!doctype html>
       margin: 0;
       padding: 10px;
       overflow: auto;
-      max-height: 220px;
+      max-height: 260px;
       background: #0f172a;
       color: #e2e8f0;
       border-radius: 6px;
@@ -343,9 +426,110 @@ HTML = r"""<!doctype html>
       overflow-wrap: anywhere;
     }
 
+    .info-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .info-card {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 12px;
+    }
+
+    .info-card.full {
+      grid-column: 1 / -1;
+    }
+
+    .info-card h3 {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
+    }
+
+    .info-value {
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 900;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    .info-value.text {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .info-detail {
+      margin-top: 8px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .bit-preview {
+      margin-top: 10px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #ffffff;
+      color: #334155;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .quadros-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .quadro-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #ffffff;
+    }
+
+    .quadro-num {
+      color: var(--text);
+      font-weight: 900;
+    }
+
+    .quadro-detail {
+      color: var(--muted);
+      line-height: 1.25;
+    }
+
+    .status-chip {
+      border-radius: 999px;
+      padding: 5px 9px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .status-chip.error {
+      color: var(--red);
+      background: rgba(185, 28, 28, 0.10);
+    }
+
     canvas {
       width: 100%;
-      height: 180px;
+      height: 210px;
       display: block;
       margin-top: 10px;
       background: #ffffff;
@@ -356,6 +540,111 @@ HTML = r"""<!doctype html>
     .stack {
       display: grid;
       gap: 12px;
+    }
+
+    .view-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .view-toggle button {
+      margin: 0;
+      min-height: 42px;
+      border-color: var(--border);
+      background: #ffffff;
+      color: var(--blue);
+      box-shadow: none;
+    }
+
+    .view-toggle button.active {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #ffffff;
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.18);
+    }
+
+    .graph-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      background: #dedad7;
+      border-radius: 8px 8px 0 0;
+      overflow: hidden;
+    }
+
+    .tab-button {
+      width: auto;
+      min-height: 42px;
+      margin: 0;
+      padding: 0 22px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
+      box-shadow: none;
+      font-weight: 900;
+    }
+
+    .tab-button.active {
+      background: #ffffff;
+      color: var(--blue);
+      box-shadow: inset 0 -4px 0 var(--blue);
+    }
+
+    .tab-panel {
+      display: none;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      background: #ffffff;
+    }
+
+    .tab-panel.active {
+      display: grid;
+      gap: 14px;
+    }
+
+    .output-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .output-block {
+      min-width: 0;
+    }
+
+    .output-block.full {
+      grid-column: 1 / -1;
+    }
+
+    .output-block h3 {
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .text-box {
+      min-height: 92px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel-2);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.45;
     }
 
     .empty {
@@ -381,7 +670,9 @@ HTML = r"""<!doctype html>
 
     @media (max-width: 920px) {
       .app { grid-template-columns: 1fr; }
-      .grid, .metrics { grid-template-columns: 1fr; }
+      aside { max-height: none; }
+      .grid, .metrics, .output-grid, .graph-grid, .info-grid { grid-template-columns: 1fr; }
+      .output-block.full, .info-card.full { grid-column: auto; }
     }
   </style>
 </head>
@@ -391,9 +682,12 @@ HTML = r"""<!doctype html>
       <h1>Simulador TR1</h1>
       <p class="sub">Transmissão completa: aplicação, enlace, física e meio ruidoso.</p>
 
+      <div class="controls-scroll">
+      <div class="section-label">Mensagem</div>
       <label for="texto">Texto de entrada</label>
-      <input id="texto" value="Ola, TR1!">
+      <textarea id="texto" spellcheck="false">Ola, TR1!</textarea>
 
+      <div class="section-label">Camada de enlace</div>
       <label for="tam_max_quadro">Tamanho máximo do quadro</label>
       <input id="tam_max_quadro" type="number" min="1" max="100" value="8">
 
@@ -418,6 +712,7 @@ HTML = r"""<!doctype html>
         <option value="hamming" selected>Hamming</option>
       </select>
 
+      <div class="section-label">Camada física</div>
       <label for="mod_digital">Modulação digital</label>
       <select id="mod_digital">
         <option value="nrz" selected>NRZ-Polar</option>
@@ -434,6 +729,7 @@ HTML = r"""<!doctype html>
         <option value="16qam">16-QAM</option>
       </select>
 
+      <div class="section-label">Meio e ruído</div>
       <label for="ruido_media">Ruído - média x (V)</label>
       <input id="ruido_media" type="number" step="0.01" value="0.00">
 
@@ -445,14 +741,22 @@ HTML = r"""<!doctype html>
                aria-label="Valor do desvio sigma em Volts">
       </div>
 
+      <div class="section-label">Execução</div>
       <label for="intervalo_ms">Intervalo contínuo (ms)</label>
       <input id="intervalo_ms" type="number" min="250" max="5000" step="50" value="900">
+      </div>
 
+      <div class="action-dock">
       <div class="button-row">
         <button id="transmitir">Transmitir uma vez</button>
         <button id="continuo" class="secondary">Iniciar contínua</button>
       </div>
       <div id="modo_status" class="live-pill">Modo manual</div>
+      <div id="resumo_lateral" class="side-summary">
+        Ajuste os parâmetros e transmita para ver potências, texto recuperado e
+        detalhes de cada etapa.
+      </div>
+      </div>
     </aside>
 
     <main>
@@ -475,10 +779,12 @@ HTML = r"""<!doctype html>
     const sigma = $("ruido_sigma");
     const sigmaValor = $("ruido_sigma_valor");
     const modoStatus = $("modo_status");
+    const resumoLateral = $("resumo_lateral");
     let modoContinuo = false;
     let transmitindo = false;
     let timerContinuo = null;
     let contadorTransmissoes = 0;
+    let visualizacaoAtual = "processamento";
 
     function limitarSigma(valor) {
       if (!Number.isFinite(valor)) return 0;
@@ -522,7 +828,7 @@ HTML = r"""<!doctype html>
       botao.disabled = true;
       if (!modoContinuo) {
         status.className = "status";
-        status.textContent = "Transmitindo...";
+        status.textContent = "";
       }
       try {
         const resposta = await fetch("/api/simular", {
@@ -585,57 +891,176 @@ HTML = r"""<!doctype html>
     }
 
     function renderizar(dados) {
-      status.className = "status " + (dados.ok ? "ok" : "error");
+      status.className = dados.ok ? "status" : "status error";
       const sufixo = modoContinuo ? ` | contínua #${contadorTransmissoes}` : "";
-      status.textContent = `${dados.status} | sigma ${limitarSigma(Number(sigmaValor.value)).toFixed(2)} V${sufixo}`;
+      status.textContent = dados.ok ? "" : `${dados.status}${sufixo}`;
+      resumoLateral.innerHTML = `
+        <strong>${modoContinuo ? "Modo contínuo" : "Modo manual"}</strong><br>
+        Potência do sinal: ${escapeHtml(dados.potencia_sinal_w)}<br>
+        Potência do ruído: ${escapeHtml(dados.potencia_ruido_w)}<br>
+        Texto recuperado ${dados.ok ? "corretamente" : "com diferenças"}.
+      `;
 
       conteudo.className = "stack";
       conteudo.innerHTML = `
         <section class="metrics">
-          <div class="metric">Bits da aplicação<b>${dados.diagnostico.bits_aplicacao}</b></div>
-          <div class="metric">Bits no enlace<b>${dados.diagnostico.bits_enlace}</b></div>
-          <div class="metric">Bits adicionados<b>${dados.diagnostico.bits_adicionados}</b></div>
-          <div class="metric">Potência do sinal<b>${dados.potencia_sinal_w}</b></div>
-          <div class="metric">Potência do ruído<b>${dados.potencia_ruido_w}</b></div>
+          <div class="metric">Bits da aplicação<b>${escapeHtml(dados.diagnostico.bits_aplicacao)}</b></div>
+          <div class="metric">Bits no enlace<b>${escapeHtml(dados.diagnostico.bits_enlace)}</b></div>
+          <div class="metric">Bits adicionados<b>${escapeHtml(dados.diagnostico.bits_adicionados)}</b></div>
+          <div class="metric">Potência do sinal<b>${escapeHtml(dados.potencia_sinal_w)}</b></div>
+          <div class="metric">Potência do ruído<b>${escapeHtml(dados.potencia_ruido_w)}</b></div>
           <div class="metric">Texto recuperado<b>${dados.ok ? "OK" : "com diferenças"}</b></div>
         </section>
-        <section class="diagnostics">
-          <h2>Processamento por fase</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Fase</th>
-                <th>Entrada</th>
-                <th>Saída</th>
-                <th>Adicionou</th>
-                <th>Diagnóstico</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${dados.diagnostico.fases.map(renderizarFase).join("")}
-            </tbody>
-          </table>
-        </section>
-        <section class="grid">
-          <article class="card">
-            <h2>Transmissor (Tx)</h2>
-            <pre>${escapeHtml(dados.texto_tx)}</pre>
-            <canvas id="tx1"></canvas>
-            <canvas id="tx2"></canvas>
-          </article>
-          <article class="card">
-            <h2>Receptor (Rx)</h2>
-            <pre>${escapeHtml(dados.texto_rx)}</pre>
-            <canvas id="rx1"></canvas>
-            <canvas id="rx2"></canvas>
-          </article>
+        <section class="inspection-panel">
+          <div id="view_processamento" class="panel-view ${visualizacaoAtual === "processamento" ? "active" : ""}">
+            <h2>Processamento por fase</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fase</th>
+                    <th>Entrada</th>
+                    <th>Saída</th>
+                    <th>Adicionou</th>
+                    <th>Diagnóstico</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${renderizarLinhaTabela(
+                    "Texto de entrada",
+                    `"${dados.texto_entrada}"`,
+                    `${bytesUtf8(dados.texto_entrada)} byte(s) UTF-8`,
+                    "0 bits",
+                    "Mensagem original recebida pela aplicação."
+                  )}
+                  ${dados.diagnostico.fases.map(renderizarFase).join("")}
+                  ${renderizarLinhaTabela(
+                    "Física RX: demodulação",
+                    "sinal recebido",
+                    `${dados.diagnostico.bits_enlace} bits`,
+                    "0 bits",
+                    "Demodula o sinal recebido e recupera o fluxo de bits da camada física."
+                  )}
+                  ${renderizarLinhaQuadrosTabela(dados.quadros)}
+                  ${renderizarLinhaTabela(
+                    "Aplicação RX: bits -> texto",
+                    `${dados.diagnostico.bits_aplicacao} bits`,
+                    `"${dados.texto_saida}"`,
+                    "0 bits",
+                    dados.ok
+                      ? "Texto recuperado corretamente; saída igual à entrada."
+                      : "Texto recuperado com diferenças em relação à entrada."
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div id="view_graficos" class="panel-view ${visualizacaoAtual === "graficos" ? "active" : ""}">
+            <h2>Gráficos do sinal</h2>
+            <div class="graph-grid">
+              <div class="output-block">
+                <h3>Sinal banda-base (Tx)</h3>
+                <canvas id="tx1"></canvas>
+              </div>
+              <div class="output-block">
+                <h3>Sinal transmitido ao meio (Tx)</h3>
+                <canvas id="tx2"></canvas>
+              </div>
+              <div class="output-block">
+                <h3>Sinal recebido com ruído (Rx)</h3>
+                <canvas id="rx1"></canvas>
+              </div>
+              <div class="output-block">
+                <h3>Banda-base reconstruída (Rx)</h3>
+                <canvas id="rx2"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="view-toggle" role="group" aria-label="Alternar painel central">
+            <button type="button" data-view="processamento" class="${visualizacaoAtual === "processamento" ? "active" : ""}">Processamento</button>
+            <button type="button" data-view="graficos" class="${visualizacaoAtual === "graficos" ? "active" : ""}">Gráficos</button>
+          </div>
         </section>
       `;
 
+      conectarVisualizacao();
+      desenharGraficos(dados);
+      requestAnimationFrame(() => desenharGraficos(dados));
+      setTimeout(() => desenharGraficos(dados), 80);
+    }
+
+    function desenharGraficos(dados) {
       plotar($("tx1"), dados.sinais.tx_banda_base, "Sinal banda-base (Tx)");
       plotar($("tx2"), dados.sinais.tx_transmitido, "Sinal transmitido ao meio (Tx)");
       plotar($("rx1"), dados.sinais.rx_recebido, "Sinal recebido com ruído (Rx)");
-      plotar($("rx2"), dados.sinais.rx_banda_base, "Banda-base reconstruído (Rx)");
+      plotar($("rx2"), dados.sinais.rx_banda_base, "Banda-base reconstruída (Rx)");
+    }
+
+    function conectarVisualizacao() {
+      document.querySelectorAll(".view-toggle button").forEach((botaoView) => {
+        botaoView.addEventListener("click", () => {
+          visualizacaoAtual = botaoView.dataset.view;
+          document.querySelectorAll(".view-toggle button").forEach((item) => {
+            item.classList.toggle("active", item === botaoView);
+          });
+          document.querySelectorAll(".panel-view").forEach((panel) => {
+            panel.classList.toggle(
+              "active",
+              panel.id === `view_${visualizacaoAtual}`
+            );
+          });
+          redesenharGraficosExistentes();
+        });
+      });
+    }
+
+    function redesenharGraficosExistentes() {
+      ["tx1", "tx2", "rx1", "rx2"].forEach((id) => {
+        const canvas = $(id);
+        if (canvas && canvas.dataset.serie) {
+          plotar(canvas, JSON.parse(canvas.dataset.serie), canvas.dataset.titulo);
+        }
+      });
+    }
+
+    function bytesUtf8(texto) {
+      return new TextEncoder().encode(String(texto)).length;
+    }
+
+    function renderizarLinhaTabela(fase, entrada, saida, delta, diagnostico) {
+      const deltaClass = delta === "0 bits" ? "delta zero" : "delta";
+      return `
+        <tr>
+          <td>${escapeHtml(fase)}</td>
+          <td><span class="table-text">${escapeHtml(entrada)}</span></td>
+          <td><span class="table-text">${escapeHtml(saida)}</span></td>
+          <td class="${deltaClass}">${escapeHtml(delta)}</td>
+          <td>${escapeHtml(diagnostico)}</td>
+        </tr>
+      `;
+    }
+
+    function renderizarLinhaQuadrosTabela(quadros) {
+      const lista = quadros || [];
+      const saida = `${lista.length} ${lista.length === 1 ? "quadro validado" : "quadros validados"}`;
+      const diagnostico = lista.map((quadro) => {
+        const chipClass = quadro.edc_ok ? "status-chip" : "status-chip error";
+        const correcao = quadro.corrigidos === 1 ? "1 bit corrigido" : `${quadro.corrigidos} bits corrigidos`;
+        const duplo = quadro.erro_duplo ? " erro duplo" : "";
+        return `
+          <span class="${chipClass}">#${escapeHtml(quadro.quadro)} ${quadro.edc_ok ? "EDC OK" : "EDC erro"}</span>
+          <span class="phase-note">${escapeHtml(correcao + duplo)}</span>
+        `;
+      }).join(" ");
+      return `
+        <tr>
+          <td>Quadros RX: validação</td>
+          <td>bits desenquadrados</td>
+          <td><span class="table-text">${escapeHtml(saida)}</span></td>
+          <td class="delta zero">0 bits</td>
+          <td>${diagnostico || "Nenhum quadro recuperado."}</td>
+        </tr>
+      `;
     }
 
     function renderizarFase(fase) {
@@ -652,10 +1077,12 @@ HTML = r"""<!doctype html>
     }
 
     function plotar(canvas, serie, titulo) {
+      canvas.dataset.serie = JSON.stringify(serie || []);
+      canvas.dataset.titulo = titulo;
       const ctx = canvas.getContext("2d");
       const ratio = window.devicePixelRatio || 1;
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
+      const width = canvas.clientWidth || 640;
+      const height = canvas.clientHeight || 210;
       canvas.width = Math.max(1, Math.floor(width * ratio));
       canvas.height = Math.max(1, Math.floor(height * ratio));
       ctx.scale(ratio, ratio);
@@ -664,7 +1091,7 @@ HTML = r"""<!doctype html>
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
       ctx.fillStyle = "#0f172a";
-      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.font = "700 12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
       ctx.fillText(titulo, 12, 18);
 
       if (!serie || serie.length < 2) {
@@ -691,8 +1118,8 @@ HTML = r"""<!doctype html>
         ctx.stroke();
       }
 
-      ctx.strokeStyle = "#0f766e";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#0d9488";
+      ctx.lineWidth = 2;
       ctx.beginPath();
       serie.forEach((valor, idx) => {
         const x = left + ((right - left) * idx / (serie.length - 1));
@@ -921,6 +1348,15 @@ def montar_resposta(payload):
         + (", ERRO DUPLO detectado" if q["erro_duplo"] else "")
         for q in resultado["rx_relatorio_quadros"]
     ) or "  (nenhum quadro recuperado)"
+    quadros = [
+        {
+            "quadro": q["quadro"],
+            "edc_ok": q["edc_ok"],
+            "corrigidos": q["corrigidos"],
+            "erro_duplo": q["erro_duplo"],
+        }
+        for q in resultado["rx_relatorio_quadros"]
+    ]
 
     texto_tx = (
         f"TEXTO DE ENTRADA:\n{config['texto']}\n\n"
@@ -951,6 +1387,14 @@ def montar_resposta(payload):
         if ok else "Texto recuperado com diferenças.",
         "potencia_sinal_w": f"{resultado['potencia_sinal_w']:.4f} W",
         "potencia_ruido_w": f"{resultado['potencia_ruido_w']:.4f} W",
+        "texto_entrada": config["texto"],
+        "texto_saida": resultado["rx_texto"],
+        "bits_tx_aplicacao": bits_str(resultado["tx_bits_aplicacao"]),
+        "bits_tx_enlace": bits_str(resultado["tx_bits_enlace"]),
+        "bits_rx_fisica": bits_str(resultado["rx_bits_fisica"]),
+        "relatorio_quadros": linhas_quadros,
+        "quadros": quadros,
+        "bits_rx_aplicacao": bits_str(resultado["rx_bits_aplicacao"]),
         "texto_tx": texto_tx,
         "texto_rx": texto_rx,
         "diagnostico": diagnostico,

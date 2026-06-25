@@ -32,10 +32,17 @@ Interface gtk:
 ./scripts/rodar_gtk.sh
 ```
 
+A janela se ajusta à resolução da tela. No macOS, a barra de título usa
+aparência clara via `pyobjc` (opcional; sem ele a interface funciona normalmente):
+
+```bash
+.venv-gtk/bin/pip install pyobjc-core pyobjc-framework-Cocoa
+```
+
 Execução direta:
 
 ```bash
-/usr/bin/python3 simulador.py
+.venv-gtk/bin/python simulador.py
 ```
 
 Testes:
@@ -63,6 +70,7 @@ python3 simulador_web.py
 
 ## Entrega
 
+- `docs/PEDIDO_RELATORIO_TR1.md`: checklist versionado do que o enunciado pede para o relatório.
 - `docs/APRESENTACAO_TR1.md`: guia único da apresentação, com divisão de fala e trechos de código.
 - `relatorio/pdfs/relatorio_tr1.pdf`: relatório final.
 - `relatorio/pdfs/apresentacao_tr1.pdf`: apresentação e defesa completas, com roteiro de 10+ minutos.

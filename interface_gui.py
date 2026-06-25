@@ -388,7 +388,7 @@ if BACKEND == "gtk":
 
         def __init__(self):
             super().__init__(title="Simulador TR1 - Camadas Física e de Enlace")
-            self.set_default_size(1380, 860)
+            self._dimensionar_para_tela()
             self.set_position(Gtk.WindowPosition.CENTER)
             self.connect("destroy", self.ao_fechar)
             self.continuo_id = None
@@ -427,8 +427,54 @@ if BACKEND == "gtk":
             raiz.attach(painel_resultados, 1, 0, 1, 1)
             self.inicializar_resultados()
 
+        def _dimensionar_para_tela(self):
+            """ajusta a janela à área útil do monitor para caber em qualquer
+            resolução (inclusive telas pequenas de notebook)."""
+            largura, altura = 1320, 880
+            try:
+                display = Gdk.Display.get_default()
+                monitor = display.get_primary_monitor() or display.get_monitor(0)
+                area = monitor.get_workarea()
+                largura = max(960, min(largura, area.width - 48))
+                altura = max(620, min(altura, area.height - 56))
+            except Exception:
+                pass
+            self.set_default_size(largura, altura)
+            # garante um mínimo utilizável sem travar o redimensionamento.
+            geo = Gdk.Geometry()
+            geo.min_width, geo.min_height = 900, 600
+            self.set_geometry_hints(None, geo, Gdk.WindowHints.MIN_SIZE)
+
+        def _ajustar_janela_nativa(self):
+            """no macOS força a janela (NSWindow) para aparência clara e fundo
+            opaco, eliminando a "borda preta"/barra escura do backend Quartz.
+            é no-op em outras plataformas ou se o PyObjC não estiver presente."""
+            try:
+                from AppKit import NSApplication, NSAppearance, NSColor
+            except Exception:
+                return False
+            try:
+                aqua = NSAppearance.appearanceNamed_("NSAppearanceNameAqua")
+                fundo = NSColor.colorWithCalibratedRed_green_blue_alpha_(
+                    0.925, 0.937, 0.961, 1.0)  # #eceff5, igual ao fundo da app
+                for ns in NSApplication.sharedApplication().windows():
+                    if aqua is not None:
+                        ns.setAppearance_(aqua)
+                    ns.setOpaque_(True)
+                    ns.setBackgroundColor_(fundo)
+                    ns.setTitlebarAppearsTransparent_(True)
+            except Exception:
+                pass
+            return False
+
         @staticmethod
         def aplicar_tema_claro():
+            # força preferência por tema claro para os widgets usarem sempre a
+            # variante clara; a barra de título nativa é clareada via PyObjC.
+            ajustes = Gtk.Settings.get_default()
+            if ajustes is not None:
+                ajustes.set_property("gtk-application-prefer-dark-theme", False)
+
             css = b"""
             * {
                 font-family: "Inter", "Cantarell", "Segoe UI", sans-serif;
@@ -442,6 +488,12 @@ if BACKEND == "gtk":
                 background: #eceff5;
                 color: #0f172a;
             }
+            /* mantemos a decoracao nativa do macOS (sem CSD, que no Quartz
+               cria uma caixa preta em volta da janela). a barra de titulo e
+               clareada via PyObjC em `_ajustar_janela_nativa`. */
+            window, window.background {
+                background-color: #eceff5;
+            }
             label { color: #0f172a; }
 
             /* ---- campos de entrada ---- */
@@ -450,20 +502,30 @@ if BACKEND == "gtk":
                 color: #0f172a;
                 border: 1px solid #cbd5e1;
                 border-radius: 10px;
-                min-height: 40px;
-                padding: 4px 12px;
+                min-height: 44px;
+                padding: 6px 14px;
+                font-size: 15px;
+                font-weight: 500;
+                caret-color: #2563eb;
             }
             entry:focus {
                 border-color: #2563eb;
                 box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
             }
+            entry selection {
+                background: #2563eb;
+                color: #ffffff;
+            }
+            entry image { color: #94a3b8; }
             spinbutton {
                 background: #ffffff;
                 color: #0f172a;
                 border: 1px solid #cbd5e1;
                 border-radius: 10px;
-                min-height: 42px;
+                min-height: 44px;
                 padding: 0 4px;
+                font-size: 15px;
+                font-weight: 600;
             }
             spinbutton:focus-within {
                 border-color: #2563eb;
@@ -473,17 +535,19 @@ if BACKEND == "gtk":
                 border: 0;
                 box-shadow: none;
                 background: transparent;
-                min-height: 34px;
+                min-height: 36px;
                 padding: 0 6px;
+                font-size: 15px;
+                font-weight: 600;
             }
             spinbutton button {
                 background: #eef2f7;
                 color: #1e293b;
                 border: 0;
                 border-radius: 8px;
-                margin: 4px 2px;
-                min-width: 30px;
-                min-height: 30px;
+                margin: 4px 3px;
+                min-width: 34px;
+                min-height: 34px;
             }
             spinbutton button:hover { background: #dbe3ef; }
             spinbutton button:active { background: #cbd5e1; }
@@ -494,9 +558,10 @@ if BACKEND == "gtk":
                 color: #0f172a;
                 border: 1px solid #cbd5e1;
                 border-radius: 10px;
-                min-height: 42px;
-                padding: 6px 12px;
+                min-height: 44px;
+                padding: 6px 14px;
                 box-shadow: none;
+                font-size: 15px;
                 font-weight: 600;
             }
             combobox > box > button:hover {
@@ -590,6 +655,14 @@ if BACKEND == "gtk":
                 font-size: 13px;
                 color: #334155;
             }
+            .sidebar-section {
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 1px;
+                color: #94a3b8;
+                margin-top: 10px;
+                margin-bottom: 2px;
+            }
             .section-title {
                 font-size: 18px;
                 font-weight: 900;
@@ -609,13 +682,14 @@ if BACKEND == "gtk":
 
             /* ---- metricas ---- */
             .metric-label {
-                color: #64748b;
-                font-size: 12px;
+                color: #94a3b8;
+                font-size: 11px;
                 font-weight: 800;
+                letter-spacing: 0.6px;
             }
             .metric-value {
                 color: #0f172a;
-                font-size: 21px;
+                font-size: 22px;
                 font-weight: 900;
             }
             .metric-ok { color: #047857; }
@@ -732,13 +806,21 @@ if BACKEND == "gtk":
                 grupo.pack_start(widget, False, True, 0)
                 caixa.pack_start(grupo, False, True, 0)
 
+            def secao(texto):
+                rotulo = self.label(texto.upper(), "sidebar-section")
+                caixa.pack_start(rotulo, False, False, 0)
+
+            secao("Mensagem")
             self.entrada_texto = Gtk.Entry(text="Ola, TR1!")
-            self.entrada_texto.set_width_chars(22)
+            self.entrada_texto.set_width_chars(20)
+            self.entrada_texto.set_hexpand(True)
+            self.entrada_texto.set_placeholder_text("Digite a mensagem a transmitir")
             adicionar("Texto de entrada", self.entrada_texto)
 
+            secao("Camada de enlace")
             self.spin_quadro = Gtk.SpinButton.new_with_range(1, 100, 1)
             self.spin_quadro.set_value(8)
-            self.spin_quadro.set_size_request(260, 42)
+            self.spin_quadro.set_size_request(260, 44)
             adicionar("Tamanho máximo do quadro", self.spin_quadro)
 
             self.combo_enq = self.novo_combo(OPCOES_ENQUADRAMENTO, 2)
@@ -750,27 +832,30 @@ if BACKEND == "gtk":
             self.combo_cor = self.novo_combo(OPCOES_CORRECAO, 1)
             adicionar("Correção de erros", self.combo_cor)
 
+            secao("Camada física")
             self.combo_dig = self.novo_combo(OPCOES_MOD_DIGITAL, 0)
             adicionar("Modulação digital", self.combo_dig)
 
             self.combo_port = self.novo_combo(OPCOES_MOD_PORTADORA, 3)
             adicionar("Modulação por portadora", self.combo_port)
 
+            secao("Meio e ruído")
             self.spin_media = Gtk.SpinButton.new_with_range(-50.0, 50.0, 0.1)
             self.spin_media.set_digits(2)
             self.spin_media.set_value(0.0)
-            self.spin_media.set_size_request(260, 42)
+            self.spin_media.set_size_request(260, 44)
             adicionar("Ruído — média (V)", self.spin_media)
 
             self.spin_sigma = Gtk.SpinButton.new_with_range(0.0, 50.0, 0.1)
             self.spin_sigma.set_digits(2)
             self.spin_sigma.set_value(0.10)
-            self.spin_sigma.set_size_request(260, 42)
+            self.spin_sigma.set_size_request(260, 44)
             adicionar("Ruído — desvio σ (V)", self.spin_sigma)
 
+            secao("Execução")
             self.spin_intervalo = Gtk.SpinButton.new_with_range(250, 5000, 50)
             self.spin_intervalo.set_value(900)
-            self.spin_intervalo.set_size_request(260, 42)
+            self.spin_intervalo.set_size_request(260, 44)
             adicionar("Intervalo contínuo (ms)", self.spin_intervalo)
 
             botoes = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -806,7 +891,7 @@ if BACKEND == "gtk":
                 combo.append_text(rotulo)
             combo.set_active(indice_padrao)
             combo.set_hexpand(True)
-            combo.set_size_request(260, 42)
+            combo.set_size_request(260, 44)
             combo._opcoes = opcoes
             return combo
 
@@ -852,7 +937,8 @@ if BACKEND == "gtk":
             ]
             for indice, (chave, rotulo) in enumerate(itens):
                 cartao, conteudo = self.novo_card("metric-card")
-                conteudo.pack_start(self.label(rotulo, "metric-label"), False, False, 0)
+                conteudo.pack_start(
+                    self.label(rotulo.upper(), "metric-label"), False, False, 0)
                 valor = self.label("-", "metric-value")
                 valor.set_line_wrap(True)
                 valor.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
@@ -1159,6 +1245,13 @@ if BACKEND == "gtk":
         def executar(self):
             self.show_all()
             self.present()
+            # foca o campo de texto com o cursor no fim (sem o texto inteiro
+            # selecionado em azul) para uma abertura mais limpa.
+            self.entrada_texto.grab_focus()
+            self.entrada_texto.set_position(-1)
+            # clareia a barra de título nativa após a janela existir.
+            self._ajustar_janela_nativa()
+            GLib.idle_add(self._ajustar_janela_nativa)
             Gtk.main()
 
 
