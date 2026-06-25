@@ -5,6 +5,7 @@
 \usepackage[brazil]{babel}
 \usepackage[margin=2.5cm]{geometry}
 \usepackage{graphicx}
+\graphicspath{{relatorio/arquivos_auxiliares/}{../arquivos_auxiliares/}}
 \usepackage{float}
 \usepackage{amsmath}
 \usepackage{amssymb}
@@ -32,7 +33,7 @@
 
 \begin{document}
 
-%==================== CAPA ====================
+% capa
 \begin{titlepage}
   \centering
   \vspace*{1cm}
@@ -64,7 +65,7 @@
   {\large Brasília --- 2026\par}
 \end{titlepage}
 
-%==================== INTRODUÇÃO ====================
+% introducao
 \section{Introdução}
 
 O \textbf{Simulador TR1} simula a transmissao de uma mensagem de texto entre dois nos de uma rede, de forma didatica e fiel. Ele foi desenvolvido na disciplina de Teleinformatica e Redes 1 (TR1).
@@ -81,7 +82,7 @@ Um diferencial exigido pelo enunciado e a separacao explicita entre transmissor 
 
 O ruido e somado justamente no canal, entre as duas \textit{threads}. Assim, o meio fica como o unico ponto de contato entre transmissor e receptor.
 
-%==================== ARQUITETURA ====================
+% arquitetura
 \section{Arquitetura do Simulador}
 
 O simulador foi escrito em Python 3. A interface grafica usa PyGObject (GTK 3), e os graficos dos sinais sao desenhados no proprio GTK com \texttt{Gtk.DrawingArea}. Assim, os protocolos e a visualizacao principal nao dependem de bibliotecas externas de calculo ou plotagem.
@@ -121,7 +122,7 @@ No transmissor, o texto desce pelas camadas de aplicacao, enlace e fisica ate vi
   \label{fig:diagrama_pilha}
 \end{figure}
 
-%==================== IMPLEMENTAÇÃO ====================
+% implementacao
 \section{Implementação}
 
 Esta secao detalha cada camada: o funcionamento dos protocolos e as decisoes de projeto.
@@ -262,7 +263,7 @@ A contagem de caracteres e limitada a 255 bytes por quadro, validada em \texttt{
 
 Por fim, o GTK e importado apenas no contexto da GUI, o que permite rodar os testes e os modulos em maquinas sem GTK.
 
-%==================== VALIDAÇÃO ====================
+% validacao
 \section{Validação e Resultados}
 
 A corretude do simulador e verificada pela suite \texttt{testes.py}, com o criterio de ida-e-volta: sem ruido, a saida do receptor deve ser identica a entrada do transmissor.
@@ -278,7 +279,7 @@ O resultado atual da execucao e ``TODOS OS TESTES PASSARAM'', o que evidencia a 
   \label{fig:testes_terminal}
 \end{figure}
 
-%==================== MEMBROS ====================
+% membros
 \section{Membros e Atividades Desenvolvidas}
 
 O trabalho foi dividido entre os dois integrantes do grupo, mantendo uma separacao equilibrada entre protocolos, simulacao e interface.
@@ -289,7 +290,7 @@ O trabalho foi dividido entre os dois integrantes do grupo, mantendo uma separac
 
 Apesar dessa divisao, ambos revisaram os pontos centrais do projeto para dominar a explicacao completa do codigo durante a apresentacao.
 
-%==================== CONCLUSÃO ====================
+% conclusao
 \section{Conclusão}
 
 O Simulador TR1 atingiu os objetivos propostos. Ele implementa todos os protocolos exigidos das camadas fisica e de enlace sem usar bibliotecas externas nos algoritmos centrais: CRC, Hamming, checksum e todas as modulacoes foram escritos manualmente, bit a bit.

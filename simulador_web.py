@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
-"""Interface web local para o Simulador TR1.
+"""interface web local para o simulador tr1.
 
-Roda sem GTK, Tk ou matplotlib. A pagina chama a mesma funcao
-simulador.executar_simulacao usada pela GUI original.
+roda sem gtk, tk ou matplotlib. a página chama a mesma função
+`simulador.executar_simulacao` usada pela gui.
 """
 
 from http.server import BaseHTTPRequestHandler, HTTPServer

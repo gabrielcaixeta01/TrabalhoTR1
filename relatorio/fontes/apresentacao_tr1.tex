@@ -1,0 +1,325 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage[margin=1.45cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlist[itemize]{leftmargin=*, topsep=2pt, itemsep=1pt}
+\setlist[enumerate]{leftmargin=*, topsep=2pt, itemsep=1pt}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false,
+  frame=single,
+  framerule=0.2pt,
+  rulecolor=\color{black!25},
+  xleftmargin=2pt,
+  xrightmargin=2pt
+}
+
+\title{\vspace{-1.1cm}\textbf{Apresentação e Defesa TR1}\\
+\large roteiro completo de 10+ minutos, teoria e excertos de código}
+\author{Gustavo Henrique Andrade Cavalcanti \and Fernando Augusto Hortencio}
+\date{Teleinformática e Redes 1 - Universidade de Brasília - 2026}
+
+\begin{document}
+\maketitle
+\vspace{-0.55cm}
+
+\begin{abstract}
+Este é o material único para apresentação e defesa do Simulador TR1. O
+roteiro mira 11 a 12 minutos de fala e inclui divisão por integrante,
+conceitos teóricos, excertos de código e perguntas prováveis. O relatório
+formal permanece em \texttt{relatorio\_tr1.pdf}.
+\end{abstract}
+
+\section{Planejamento de tempo}
+
+\begin{tabular}{p{4.1cm}p{1.8cm}p{2.6cm}p{6cm}}
+\toprule
+\textbf{Bloco} & \textbf{Tempo} & \textbf{Fala} & \textbf{Foco} \\
+\midrule
+Abertura e visão geral & 1 min & Fernando & problema, objetivo e fluxo completo \\
+Conceitos antes do código & 2 min & Fernando/Gustavo & camadas, enlace, física e ruído \\
+Arquitetura & 1 min 30 s & Fernando & threads, filas e meio \\
+Camada de enlace & 3 min & Gustavo & quadros, edc, crc e hamming \\
+Camada física e meio & 2 min 30 s & Gustavo & sinais, portadora, constelação e ruído \\
+Interface e validação & 1 min & Fernando & gtk, testes e resultados \\
+Fechamento & 30 s & Fernando & conclusão \\
+\bottomrule
+\end{tabular}
+
+\section{Abertura - Fernando}
+
+Fala sugerida: o trabalho simula a comunicação entre um transmissor e um
+receptor. A mensagem começa como texto, vira bits, é organizada em quadros,
+recebe detecção e correção de erros, vira sinal elétrico, atravessa um meio
+com ruído gaussiano e depois é reconstruída no receptor.
+
+\begin{center}
+\texttt{texto -> bits -> enlace -> física -> meio ruidoso -> física -> enlace -> texto}
+\end{center}
+
+Pontos obrigatórios: a interface principal é gtk; tx e rx são separados; o
+ruído entra no meio; crc, hamming, enquadramento e modulações são manuais.
+
+\section{Conceitos antes do código}
+
+\subsection{Visão de camadas - Fernando}
+
+\begin{tabular}{p{2.7cm}p{5.2cm}p{5.1cm}}
+\toprule
+\textbf{Camada} & \textbf{Papel} & \textbf{Arquivo} \\
+\midrule
+Aplicação & texto <-> bits & \texttt{camada\_aplicacao.py} \\
+Enlace & quadros, edc, hamming & \texttt{camada\_enlace.py} \\
+Física & banda-base e portadora & \texttt{camada\_fisica.py} \\
+Meio & ruído e potência & \texttt{meio\_comunicacao.py} \\
+Simulação & tx, canal e rx & \texttt{simulador.py} \\
+\bottomrule
+\end{tabular}
+
+\subsection{Enlace - Gustavo}
+
+A camada de enlace resolve três problemas: definir fronteiras de quadro,
+detectar alterações e, quando hamming está ligado, corrigir erro simples.
+Os protocolos são: contagem, byte stuffing, bit stuffing, paridade, checksum,
+crc-32 e hamming(8,4).
+
+\subsection{Física - Gustavo}
+
+A camada física transforma bits em amostras de tensão. Em banda-base, cada bit
+vira níveis de tensão. Na portadora, grupos de bits escolhem amplitude,
+frequência, fase ou ponto de constelação. QPSK usa 2 bits por símbolo; 16-QAM
+usa 4 bits por símbolo, mas é mais sensível ao ruído.
+
+\section{Arquitetura - Fernando}
+
+\begin{lstlisting}[language=Python]
+th_tx = threading.Thread(target=_rotina_tx, args=(config, fila_tx, resultados))
+th_rx = threading.Thread(target=_rotina_rx, args=(config, fila_rx, resultados))
+
+th_tx.start()
+th_rx.start()
+
+sinal_limpo = fila_tx.get()
+sinal_ruidoso = meio_comunicacao.transmitir(
+    sinal_limpo, config["ruido_media"], config["ruido_sigma"])
+fila_rx.put(sinal_ruidoso)
+\end{lstlisting}
+
+Explicação: \texttt{th\_tx} desce a pilha no transmissor; \texttt{th\_rx}
+sobe a pilha no receptor; \texttt{fila\_tx} leva o sinal limpo ao canal; o
+meio soma ruído; \texttt{fila\_rx} entrega o sinal ruidoso ao receptor. Isso
+mostra que tx e rx não se chamam diretamente.
+
+\begin{lstlisting}[language=Python]
+for byte in texto.encode("utf-8"):
+    for i in range(7, -1, -1):
+        bits.append((byte >> i) & 1)
+\end{lstlisting}
+
+Explicação: o texto vira bytes e cada byte é lido do bit mais significativo
+ao menos significativo. Essa lista de bits é a entrada da camada de enlace.
+
+\section{Camada de enlace - Gustavo}
+
+\subsection{Pipeline}
+
+\begin{lstlisting}[language=Python]
+for i in range(0, len(bits), tam_bits):
+    bloco = bits[i:i + tam_bits]
+    bloco = ADICIONAR_EDC[config["deteccao"]](bloco)
+    if config["correcao"] == "hamming":
+        bloco = codificar_hamming(bloco)
+    payloads.append(bloco)
+return ENQUADRAR[config["enquadramento"]](payloads)
+\end{lstlisting}
+
+Explicação: o payload é dividido em blocos; o edc é anexado; hamming protege
+payload + edc; por fim, o quadro é enquadrado. No receptor a ordem é inversa:
+desenquadrar, corrigir e verificar.
+
+\subsection{Enquadramento}
+
+\begin{lstlisting}[language=Python]
+if byte in (FLAG_BYTE, ESC_BYTE):
+    quadro.append(ESC_BYTE)
+quadro.append(byte)
+\end{lstlisting}
+
+No byte stuffing, \texttt{FLAG\_BYTE} delimita quadro e \texttt{ESC\_BYTE}
+protege dados especiais.
+
+\begin{lstlisting}[language=Python]
+if uns == 5:
+    trem.append(0)
+    uns = 0
+\end{lstlisting}
+
+No bit stuffing, a flag é \texttt{01111110}. Depois de cinco bits 1 seguidos,
+o transmissor insere 0 para impedir que dados imitem a flag.
+
+\subsection{CRC-32}
+
+\begin{lstlisting}[language=Python]
+for bit in reversed(byte):
+    if (crc ^ bit) & 1:
+        crc = (crc >> 1) ^ POLI_CRC32_REFLETIDO
+    else:
+        crc >>= 1
+return crc ^ 0xFFFFFFFF
+\end{lstlisting}
+
+Explicação: o crc é calculado bit a bit. O xor representa soma em gf(2), o
+polinômio refletido é \texttt{0xedb88320}, e o vetor \texttt{123456789} deve
+gerar \texttt{0xcbf43926}. Não há uso de \texttt{zlib}.
+
+\subsection{Hamming(8,4)}
+
+\begin{lstlisting}[language=Python]
+s1 = (bloco[0] + bloco[2] + bloco[4] + bloco[6]) % 2
+s2 = (bloco[1] + bloco[2] + bloco[5] + bloco[6]) % 2
+s4 = (bloco[3] + bloco[4] + bloco[5] + bloco[6]) % 2
+sindrome = s4 * 4 + s2 * 2 + s1
+par_geral = sum(bloco) % 2
+\end{lstlisting}
+
+\begin{tabular}{p{3cm}p{3cm}p{7cm}}
+\toprule
+\textbf{Síndrome} & \textbf{Paridade geral} & \textbf{Resultado} \\
+\midrule
+0 & par & sem erro \\
+diferente de 0 & ímpar & erro simples corrigível \\
+0 & ímpar & erro no bit de paridade geral \\
+diferente de 0 & par & erro duplo detectado \\
+\bottomrule
+\end{tabular}
+
+Explicação: a síndrome aponta a posição do erro simples. A paridade geral
+impede que dois erros sejam tratados como um erro simples. O custo é dobrar o
+tamanho, porque 4 bits viram 8 bits.
+
+\section{Camada física e meio - Gustavo}
+
+\subsection{Banda-base}
+
+Em banda-base, bits viram níveis de tensão. NRZ-Polar usa +V e -V; Manchester
+usa transição no meio do bit; Bipolar AMI usa 0 V para zero e alterna a
+polaridade dos bits 1.
+
+\subsection{Portadora e i/q}
+
+\begin{lstlisting}[language=Python]
+def onda(i, q, ciclos):
+    N = AMOSTRAS_POR_SIMBOLO
+    amostras = []
+    for n in range(N):
+        angulo = 2 * math.pi * ciclos * n / N
+        amostras.append(i * math.cos(angulo) - q * math.sin(angulo))
+    return amostras
+\end{lstlisting}
+
+Explicação: cada símbolo é uma sequência de amostras. \texttt{i} multiplica o
+cosseno e \texttt{q} multiplica o seno. Escolher \texttt{(i, q)} é escolher
+amplitude e fase.
+
+\begin{lstlisting}[language=Python]
+i = 2 / N * soma_cos
+q = -2 / N * soma_sen
+return i, q
+\end{lstlisting}
+
+Explicação: o receptor estima as componentes i/q por correlação e depois
+escolhe o ponto válido mais próximo da constelação.
+
+\subsection{QPSK e 16-QAM}
+
+QPSK transmite 2 bits por símbolo e usa mapeamento gray. 16-QAM transmite 4
+bits por símbolo usando níveis \(-3\), \(-1\), \(1\), \(3\) em cada eixo. É
+mais eficiente, mas os pontos ficam mais próximos, então o ruído afeta mais.
+
+\subsection{Meio e potência}
+
+\begin{lstlisting}[language=Python]
+return [amostra + random.gauss(media, sigma) for amostra in sinal]
+\end{lstlisting}
+
+Explicação: cada amostra recebe ruído gaussiano independente. \texttt{media}
+desloca o sinal; \texttt{sigma} controla a intensidade do ruído.
+
+\begin{lstlisting}[language=Python]
+return sum(amostra * amostra for amostra in sinal) / len(sinal)
+\end{lstlisting}
+
+Explicação: potência média é a média de \(v^2\), assumindo resistência de 1
+ohm.
+
+\section{Interface e validação - Fernando}
+
+\begin{lstlisting}[language=Python]
+resultado = simulador.executar_simulacao(config)
+diagnostico = diagnosticar_camadas(
+    resultado["tx_bits_aplicacao"], resultado, config)
+\end{lstlisting}
+
+Explicação: a interface não reimplementa protocolos. Ela chama a função real
+do simulador, calcula diagnóstico por fase e mostra bits, sinais, métricas e
+relatório de quadros.
+
+\begin{lstlisting}[language=Python]
+bits_123 = app.texto_para_bits("123456789")
+ok &= testar("crc32 123456789 == 0xCBF43926",
+             enlace.calcular_crc32(bits_123) == 0xCBF43926)
+\end{lstlisting}
+
+Explicação: esse teste valida o crc contra um vetor conhecido. A suíte também
+cobre aplicação, enquadramentos, edc, hamming, modulações e simulação
+completa.
+
+\section{Fechamento - Fernando}
+
+O projeto cumpre o enunciado porque separa transmissor e receptor, usa gtk
+como interface principal, implementa enlace e física manualmente, usa sinal em
+volts, injeta ruído gaussiano no meio e valida a transmissão com testes. A
+principal contribuição é tornar visível o caminho completo da informação:
+texto, bits, quadros, sinal, ruído e texto recuperado.
+
+\section{Perguntas prováveis}
+
+\textbf{Por que não usar zlib para crc?} Porque o enunciado proíbe bibliotecas
+prontas para os protocolos.
+
+\textbf{Por que hamming vem depois do edc?} Para proteger também os bits de
+verificação anexados ao payload.
+
+\textbf{Por que hamming(8,4), e não hamming(7,4)?} O bit extra de paridade
+geral permite detectar erro duplo e mantém alinhamento em bytes.
+
+\textbf{Por que 16-QAM é mais sensível a ruído?} Porque os pontos da
+constelação ficam mais próximos.
+
+\textbf{A interface web substitui a gtk?} Não. A interface principal é gtk; a
+web é opcional e chama a mesma função.
+
+\section{Checklist de domínio}
+
+Fernando: \texttt{executar\_simulacao}, \texttt{\_rotina\_tx},
+\texttt{\_rotina\_rx}, filas, interface gtk, diagnóstico e testes.
+
+Gustavo: enquadramento, crc-32, hamming, \texttt{onda},
+\texttt{correlacionar}, qpsk, 16-qam, ruído e potência média.
+
+\end{document}

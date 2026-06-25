@@ -1,12 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-INTERFACE GRÁFICA
-=================
-Usa GTK 3 (requisito do trabalho) quando disponível; cai para tkinter
-automaticamente em ambientes sem GTK instalado (ex.: Windows sem sudo).
+interface gráfica do simulador.
 
-Dependências para GTK (Linux):
-  sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0
+usa gtk 3 quando disponível e mantém um fallback simples em tkinter para
+ambientes sem gtk.
 """
 
 try:
@@ -48,6 +44,16 @@ BITS_POR_SIMBOLO = {"ask": 1, "fsk": 1, "qpsk": 2, "16qam": 4}
 MAX_AMOSTRAS_GRAFICO = 4000
 MAX_BITS_TEXTO = 2048
 
+# larguras das colunas da tabela de fases em nº de caracteres; usar largura por
+# caractere (e não pixels) fixa a largura natural do rótulo, então textos longos
+# quebram em várias linhas em vez de empurrar as colunas vizinhas.
+COL_FASE_NUM = 3
+COL_FASE_NOME = 24
+COL_FASE_ENTRADA = 15
+COL_FASE_SAIDA = 20
+COL_FASE_BITS = 11
+COL_FASE_ESPACO = 14
+
 
 def bits_str(bits):
     if bits is None:
@@ -68,6 +74,13 @@ def plural_amostras(n):
 
 def plural_quadros(n):
     return f"{n} quadro" if n == 1 else f"{n} quadros"
+
+
+def resumir_texto(texto, limite=48):
+    texto = texto.replace("\n", "\\n")
+    if len(texto) <= limite:
+        return texto
+    return texto[:limite - 3] + "..."
 
 
 def detalhe_deteccao(tipo, n_quadros):
@@ -146,11 +159,18 @@ def diagnosticar_camadas(bits_app, resultado, config):
         "padding_portadora": padding_portadora,
         "fases": [
             {
+                "nome": "Texto de entrada",
+                "entrada": f'"{resumir_texto(config["texto"])}"',
+                "saida": f"{len(config['texto'].encode('utf-8'))} byte(s) UTF-8",
+                "delta": "0 bits",
+                "detalhe": "Mensagem original recebida pela aplicação antes de virar bits.",
+            },
+            {
                 "nome": "Aplicação: texto -> bits",
                 "entrada": f"{len(config['texto'].encode('utf-8'))} byte(s) UTF-8",
                 "saida": plural_bits(len(bits_app)),
                 "delta": "0 bits",
-                "detalhe": "Converte bytes UTF-8 em bits; não adiciona redundância.",
+                "detalhe": "Cada byte UTF-8 é representado por 8 bits.",
             },
             {
                 "nome": "Divisão em quadros",
@@ -205,6 +225,13 @@ def diagnosticar_camadas(bits_app, resultado, config):
                     f"Ruído gaussiano: média {config['ruido_media']:.2f} V, "
                     f"sigma {config['ruido_sigma']:.2f} V por amostra."
                 ),
+            },
+            {
+                "nome": "Receptor: bits -> texto",
+                "entrada": plural_bits(len(resultado["rx_bits_aplicacao"])),
+                "saida": f'"{resumir_texto(resultado["rx_texto"])}"',
+                "delta": "0 bits",
+                "detalhe": "Demodula, valida enlace e reconstrói o texto de aplicação.",
             },
         ],
     }
@@ -357,11 +384,11 @@ if BACKEND == "gtk":
             cr.show_text(texto)
 
     class JanelaSimulador(Gtk.Window):
-        """Janela principal do simulador (GTK 3)."""
+        """janela principal do simulador em gtk 3."""
 
         def __init__(self):
             super().__init__(title="Simulador TR1 - Camadas Física e de Enlace")
-            self.set_default_size(1280, 820)
+            self.set_default_size(1380, 860)
             self.set_position(Gtk.WindowPosition.CENTER)
             self.connect("destroy", self.ao_fechar)
             self.continuo_id = None
@@ -370,8 +397,8 @@ if BACKEND == "gtk":
             self.linhas_fases = []
             self.aplicar_tema_claro()
 
-            raiz = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-            raiz.set_border_width(12)
+            raiz = Gtk.Grid(column_spacing=16)
+            raiz.set_border_width(16)
             raiz.set_hexpand(True)
             raiz.set_vexpand(True)
             raiz.set_halign(Gtk.Align.FILL)
@@ -379,119 +406,269 @@ if BACKEND == "gtk":
             raiz.get_style_context().add_class("app-root")
             self.add(raiz)
 
-            raiz.pack_start(self.montar_painel_config(), False, False, 0)
-            raiz.pack_start(self.montar_painel_resultados(), True, True, 0)
+            painel_config = self.montar_painel_config()
+            painel_config.set_hexpand(True)
+
+            config_scroll = Gtk.ScrolledWindow()
+            config_scroll.get_style_context().add_class("results-scroll")
+            config_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            config_scroll.set_min_content_width(340)
+            config_scroll.set_shadow_type(Gtk.ShadowType.NONE)
+            config_scroll.add(painel_config)
+            config_scroll.set_hexpand(False)
+            config_scroll.set_vexpand(True)
+            config_scroll.set_halign(Gtk.Align.START)
+
+            painel_resultados = self.montar_painel_resultados()
+            painel_resultados.set_hexpand(True)
+            painel_resultados.set_vexpand(True)
+
+            raiz.attach(config_scroll, 0, 0, 1, 1)
+            raiz.attach(painel_resultados, 1, 0, 1, 1)
             self.inicializar_resultados()
 
         @staticmethod
         def aplicar_tema_claro():
             css = b"""
             * {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                font-family: "Inter", "Cantarell", "Segoe UI", sans-serif;
+                font-size: 14px;
+                text-shadow: none;
+                -gtk-icon-shadow: none;
+                transition: none;
+                outline: none;
             }
-            window, .app-root, .main-panel, scrolledwindow {
-                background: #eef2f7;
-                color: #111827;
+            window, .app-root, .main-panel, scrolledwindow, viewport {
+                background: #eceff5;
+                color: #0f172a;
             }
-            label {
-                color: #111827;
-            }
-            entry, spinbutton, combobox, scale {
+            label { color: #0f172a; }
+
+            /* ---- campos de entrada ---- */
+            entry {
                 background: #ffffff;
-                color: #111827;
+                color: #0f172a;
                 border: 1px solid #cbd5e1;
-                border-radius: 6px;
+                border-radius: 10px;
+                min-height: 40px;
+                padding: 4px 12px;
+            }
+            entry:focus {
+                border-color: #2563eb;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+            }
+            spinbutton {
+                background: #ffffff;
+                color: #0f172a;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                min-height: 42px;
+                padding: 0 4px;
+            }
+            spinbutton:focus-within {
+                border-color: #2563eb;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+            }
+            spinbutton entry {
+                border: 0;
+                box-shadow: none;
+                background: transparent;
+                min-height: 34px;
+                padding: 0 6px;
+            }
+            spinbutton button {
+                background: #eef2f7;
+                color: #1e293b;
+                border: 0;
+                border-radius: 8px;
+                margin: 4px 2px;
+                min-width: 30px;
                 min-height: 30px;
             }
-            button {
-                border-radius: 6px;
-                min-height: 34px;
-                font-weight: 700;
+            spinbutton button:hover { background: #dbe3ef; }
+            spinbutton button:active { background: #cbd5e1; }
+
+            /* ---- combos / dropdowns ---- */
+            combobox > box > button {
+                background: #ffffff;
+                color: #0f172a;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                min-height: 42px;
+                padding: 6px 12px;
+                box-shadow: none;
+                font-weight: 600;
+            }
+            combobox > box > button:hover {
+                border-color: #94a3b8;
+                background: #f8fafc;
+            }
+            combobox > box > button:focus {
+                border-color: #2563eb;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+            }
+            combobox cellview, combobox button label { color: #0f172a; }
+            combobox arrow {
+                color: #64748b;
+                min-width: 18px;
+                min-height: 18px;
+            }
+            combobox window.background,
+            menu, .menu, popover, popover.background {
+                background: #ffffff;
+                color: #0f172a;
+                border: 1px solid #dbe3ef;
+                border-radius: 12px;
+                padding: 6px;
+                box-shadow: 0 14px 34px rgba(15, 23, 42, 0.20);
+            }
+            menuitem, .menu menuitem, modelbutton {
+                border-radius: 8px;
+                padding: 9px 12px;
+                color: #0f172a;
+            }
+            menuitem label, modelbutton label, popover label { color: #0f172a; }
+            menuitem:hover, menuitem:selected,
+            combobox menuitem:hover, modelbutton:hover {
+                background: #eff6ff;
+                color: #1d4ed8;
+            }
+            menuitem:hover label, menuitem:selected label { color: #1d4ed8; }
+
+            /* ---- botoes de acao ---- */
+            button { border-radius: 11px; }
+            button.primary, button.secondary {
+                min-height: 46px;
+                font-weight: 800;
             }
             button.primary {
                 background: #2563eb;
                 color: #ffffff;
                 border: 1px solid #1d4ed8;
+                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.30);
             }
+            button.primary:hover { background: #1d4ed8; }
+            button.primary label { color: #ffffff; }
             button.secondary {
                 background: #ffffff;
                 color: #1d4ed8;
                 border: 1px solid #bfdbfe;
             }
-            .sidebar, .card, .metric-card, .status-banner {
+            button.secondary label { color: #1d4ed8; }
+            button.secondary:hover { background: #eff6ff; }
+            button.secondary:checked {
+                background: #dc2626;
+                border-color: #b91c1c;
+                box-shadow: 0 4px 12px rgba(220, 38, 38, 0.30);
+            }
+            button.secondary:checked label { color: #ffffff; }
+
+            /* ---- cartoes ---- */
+            .sidebar, .card {
                 background: #ffffff;
-                border: 1px solid #dbe3ef;
-                border-radius: 8px;
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+            }
+            .metric-card {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 14px;
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
             }
             .title {
-                font-size: 20px;
+                font-size: 22px;
                 font-weight: 800;
+                color: #0f172a;
             }
             .subtitle {
-                color: #475569;
-                font-size: 12px;
+                color: #64748b;
+                font-size: 13px;
             }
             .field-label {
                 font-weight: 700;
+                font-size: 13px;
+                color: #334155;
+            }
+            .section-title {
+                font-size: 18px;
+                font-weight: 900;
+                color: #0f172a;
+            }
+            .section-hint {
+                color: #64748b;
                 font-size: 12px;
             }
             .mode-panel {
                 background: #f8fafc;
-                border: 1px solid #dbe3ef;
-                border-radius: 6px;
-            }
-            .status-banner {
-                border-left: 6px solid #059669;
-            }
-            .status-error {
-                border-left-color: #dc2626;
-            }
-            .status-warn {
-                border-left-color: #d97706;
-            }
-            .metric-label, .phase-header {
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
                 color: #475569;
-                font-size: 11px;
+            }
+            .mode-panel label { color: #475569; }
+
+            /* ---- metricas ---- */
+            .metric-label {
+                color: #64748b;
+                font-size: 12px;
                 font-weight: 800;
             }
             .metric-value {
                 color: #0f172a;
-                font-size: 22px;
+                font-size: 21px;
                 font-weight: 900;
             }
-            .phase-cell {
-                color: #1f2937;
+            .metric-ok { color: #047857; }
+            .metric-warn { color: #b45309; }
+            .metric-error { color: #b91c1c; }
+
+            /* ---- tabela de fases ---- */
+            .phase-table {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+            }
+            .phase-head {
+                background: #f1f5f9;
+                border-bottom: 2px solid #e2e8f0;
+                border-radius: 12px 12px 0 0;
+            }
+            .phase-row { background: #ffffff; border-bottom: 1px solid #eef2f7; }
+            .phase-row-alt { background: #f8fafc; }
+            .phase-row:hover { background: #eff6ff; }
+            .phase-number {
+                color: #1d4ed8;
+                font-size: 13px;
+                font-weight: 900;
+            }
+            .phase-name {
+                color: #0f172a;
+                font-size: 14px;
+                font-weight: 800;
+            }
+            .phase-caption {
+                color: #475569;
                 font-size: 12px;
+                font-weight: 800;
+            }
+            .phase-cell {
+                color: #334155;
+                font-size: 13px;
             }
             .phase-delta {
                 color: #047857;
+                font-size: 13px;
                 font-weight: 900;
             }
             .phase-zero {
-                color: #64748b;
-                font-weight: 800;
-            }
-            .console, .console text {
-                background: #0f172a;
-                color: #f8fafc;
-                font-family: Menlo, Consolas, monospace;
-                font-size: 11px;
-            }
-            .pill {
-                background: #f8fafc;
-                border: 1px solid #dbe3ef;
-                border-radius: 14px;
-                color: #0f172a;
+                color: #94a3b8;
+                font-size: 13px;
                 font-weight: 700;
             }
-            notebook {
-                background: #ffffff;
-                border: 1px solid #dbe3ef;
-                border-radius: 8px;
-            }
-            notebook tab {
-                min-height: 32px;
-                padding: 4px 12px;
+            .results-scroll {
+                background: #eceff5;
+                border: 0;
+                box-shadow: none;
             }
             """
             provider = Gtk.CssProvider()
@@ -535,8 +712,8 @@ if BACKEND == "gtk":
 
         def montar_painel_config(self):
             cartao, caixa = self.novo_card("sidebar")
-            cartao.set_size_request(300, -1)
-            caixa.set_size_request(276, -1)
+            cartao.set_size_request(320, -1)
+            caixa.set_size_request(292, -1)
 
             titulo = self.label("Simulador TR1", "title")
             caixa.pack_start(titulo, False, False, 0)
@@ -561,7 +738,7 @@ if BACKEND == "gtk":
 
             self.spin_quadro = Gtk.SpinButton.new_with_range(1, 100, 1)
             self.spin_quadro.set_value(8)
-            self.spin_quadro.set_size_request(260, 34)
+            self.spin_quadro.set_size_request(260, 42)
             adicionar("Tamanho máximo do quadro", self.spin_quadro)
 
             self.combo_enq = self.novo_combo(OPCOES_ENQUADRAMENTO, 2)
@@ -579,30 +756,21 @@ if BACKEND == "gtk":
             self.combo_port = self.novo_combo(OPCOES_MOD_PORTADORA, 3)
             adicionar("Modulação por portadora", self.combo_port)
 
-            self.spin_media = Gtk.SpinButton.new_with_range(-2.0, 2.0, 0.01)
+            self.spin_media = Gtk.SpinButton.new_with_range(-50.0, 50.0, 0.1)
             self.spin_media.set_digits(2)
             self.spin_media.set_value(0.0)
-            self.spin_media.set_size_request(260, 34)
-            adicionar("Ruído - média x (V)", self.spin_media)
+            self.spin_media.set_size_request(260, 42)
+            adicionar("Ruído — média (V)", self.spin_media)
 
-            self.spin_sigma = Gtk.Scale.new_with_range(
-                Gtk.Orientation.HORIZONTAL, 0.0, 2.0, 0.01)
+            self.spin_sigma = Gtk.SpinButton.new_with_range(0.0, 50.0, 0.1)
             self.spin_sigma.set_digits(2)
-            self.spin_sigma.set_draw_value(False)
             self.spin_sigma.set_value(0.10)
-            self.spin_sigma.set_hexpand(True)
-            self.spin_sigma.set_size_request(178, 34)
-            self.lbl_sigma_valor = self.label("0.10 V", "pill", xalign=0.5)
-            self.lbl_sigma_valor.set_size_request(66, 28)
-            self.spin_sigma.connect("value-changed", self.ao_mudar_sigma)
-            linha_sigma = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            linha_sigma.pack_start(self.spin_sigma, True, True, 0)
-            linha_sigma.pack_start(self.lbl_sigma_valor, False, False, 0)
-            adicionar("Ruído - desvio σ (V)", linha_sigma)
+            self.spin_sigma.set_size_request(260, 42)
+            adicionar("Ruído — desvio σ (V)", self.spin_sigma)
 
             self.spin_intervalo = Gtk.SpinButton.new_with_range(250, 5000, 50)
             self.spin_intervalo.set_value(900)
-            self.spin_intervalo.set_size_request(260, 34)
+            self.spin_intervalo.set_size_request(260, 42)
             adicionar("Intervalo contínuo (ms)", self.spin_intervalo)
 
             botoes = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -632,16 +800,13 @@ if BACKEND == "gtk":
             modo_inner.pack_start(self.lbl_status, False, False, 0)
             return cartao
 
-        def ao_mudar_sigma(self, escala):
-            self.lbl_sigma_valor.set_text(f"{escala.get_value():.2f} V")
-
         def novo_combo(self, opcoes, indice_padrao):
             combo = Gtk.ComboBoxText()
             for rotulo, _ in opcoes:
                 combo.append_text(rotulo)
             combo.set_active(indice_padrao)
             combo.set_hexpand(True)
-            combo.set_size_request(260, 34)
+            combo.set_size_request(260, 42)
             combo._opcoes = opcoes
             return combo
 
@@ -650,155 +815,218 @@ if BACKEND == "gtk":
             return combo._opcoes[combo.get_active()][1]
 
         def montar_painel_resultados(self):
+            # uma única página rolável reúne métricas, tabela de fases e os
+            # gráficos Tx/Rx, então tudo aparece no mesmo lugar.
             rolagem = Gtk.ScrolledWindow()
+            self.rolagem_resultados = rolagem
+            rolagem.get_style_context().add_class("results-scroll")
             rolagem.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
             rolagem.set_hexpand(True)
             rolagem.set_vexpand(True)
+            rolagem.set_shadow_type(Gtk.ShadowType.NONE)
 
-            painel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            painel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
             painel.get_style_context().add_class("main-panel")
+            painel.set_border_width(4)
             painel.set_hexpand(True)
-            painel.set_vexpand(True)
-            rolagem.add(painel)
-
-            self.banner_status = Gtk.EventBox()
-            self.banner_status.get_style_context().add_class("status-banner")
-            banner_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            banner_inner.set_border_width(12)
-            self.lbl_banner = self.label("Pronto para transmitir.")
-            self.lbl_banner.set_line_wrap(True)
-            self.lbl_banner.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
-            self.lbl_banner.set_max_width_chars(60)
-            banner_inner.pack_start(self.lbl_banner, False, False, 0)
-            self.banner_status.add(banner_inner)
-            painel.pack_start(self.banner_status, False, True, 0)
+            painel.set_valign(Gtk.Align.START)
 
             painel.pack_start(self.montar_metricas(), False, True, 0)
             painel.pack_start(self.montar_tabela_diagnostico(), False, True, 0)
-            painel.pack_start(self.montar_resultados_duplos(), True, True, 0)
+            painel.pack_start(self.montar_resultados_duplos(), False, True, 0)
+
+            rolagem.add(painel)
             return rolagem
 
         def montar_metricas(self):
             grade = Gtk.Grid(column_spacing=10, row_spacing=10)
             grade.set_column_homogeneous(True)
+            grade.set_hexpand(True)
             itens = [
                 ("bits_aplicacao", "Bits da aplicação"),
                 ("bits_enlace", "Bits no enlace"),
                 ("bits_adicionados", "Bits adicionados"),
                 ("potencia_sinal", "Potência do sinal"),
                 ("potencia_ruido", "Potência do ruído"),
-                ("texto_recuperado", "Texto recuperado"),
+                ("texto_recuperado", "Status da recepção"),
             ]
             for indice, (chave, rotulo) in enumerate(itens):
                 cartao, conteudo = self.novo_card("metric-card")
                 conteudo.pack_start(self.label(rotulo, "metric-label"), False, False, 0)
                 valor = self.label("-", "metric-value")
+                valor.set_line_wrap(True)
+                valor.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
                 conteudo.pack_start(valor, False, False, 0)
                 self.metricas[chave] = valor
-                coluna = indice % 2
-                linha = indice // 2
+                coluna = indice % 3
+                linha = indice // 3
                 grade.attach(cartao, coluna, linha, 1, 1)
             return grade
 
         def montar_tabela_diagnostico(self):
             cartao, conteudo = self.novo_card("card")
-            titulo = self.label("Processamento por fase", "title")
-            conteudo.pack_start(titulo, False, False, 0)
+            conteudo.pack_start(
+                self.label("Detalhamento por fase", "section-title"),
+                False, False, 0)
 
-            grade = Gtk.Grid(column_spacing=8, row_spacing=8)
-            conteudo.pack_start(grade, False, True, 0)
+            self.lbl_resumo_fases = self.label(
+                "Resumo da transmissão aparece aqui depois da primeira execução.",
+                "section-hint",
+                wrap=True,
+            )
+            conteudo.pack_start(self.lbl_resumo_fases, False, False, 0)
 
-            colunas = [
-                ("FASE", 16),
-                ("ENTRADA", 9),
-                ("SAÍDA", 10),
-                ("ADICIONOU", 8),
-                ("DIAGNÓSTICO", 20),
-            ]
-            for coluna, (texto, largura) in enumerate(colunas):
-                cabecalho = self.label(texto, "phase-header")
-                cabecalho.set_width_chars(largura)
-                grade.attach(cabecalho, coluna, 0, 1, 1)
-
-            for linha in range(1, 9):
-                labels = {}
-                for coluna, (chave, largura, classe) in enumerate([
-                    ("nome", 16, "phase-cell"),
-                    ("entrada", 9, "phase-cell"),
-                    ("saida", 10, "phase-cell"),
-                    ("delta", 8, "phase-zero"),
-                    ("detalhe", 20, "phase-cell"),
-                ]):
-                    label = self.label("-", classe, wrap=True)
-                    label.set_width_chars(largura)
-                    label.set_max_width_chars(largura)
-                    grade.attach(label, coluna, linha, 1, 1)
-                    labels[chave] = label
-                self.linhas_fases.append(labels)
+            tabela = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            tabela.get_style_context().add_class("phase-table")
+            tabela.set_hexpand(True)
+            tabela.pack_start(self.criar_cabecalho_fases(), False, False, 0)
+            for indice in range(10):
+                self.linhas_fases.append(
+                    self.criar_linha_fase(tabela, indice + 1, indice % 2 == 1))
+            conteudo.pack_start(tabela, False, True, 0)
             return cartao
 
+        # cada coluna usa a mesma largura (em caracteres) no cabeçalho e nas
+        # linhas, então tudo fica alinhado como uma tabela de verdade.
+        def celula_fase(self, chars, classe, expandir=False):
+            celula = self.label("-", classe, xalign=0, wrap=True)
+            celula.set_valign(Gtk.Align.START)
+            celula.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+            celula.set_width_chars(chars)
+            if expandir:
+                celula.set_hexpand(True)
+                celula.set_halign(Gtk.Align.FILL)
+            else:
+                celula.set_max_width_chars(chars)
+            return celula
+
+        def criar_cabecalho_fases(self):
+            cabecalho = Gtk.EventBox()
+            cabecalho.get_style_context().add_class("phase-head")
+            linha = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                            spacing=COL_FASE_ESPACO)
+            linha.set_border_width(10)
+            cabecalho.add(linha)
+
+            colunas = [
+                ("Nº", COL_FASE_NUM, False),
+                ("Fase", COL_FASE_NOME, False),
+                ("Entrada", COL_FASE_ENTRADA, False),
+                ("Processamento", 0, True),
+                ("Saída", COL_FASE_SAIDA, False),
+                ("Bits +", COL_FASE_BITS, False),
+            ]
+            for texto, chars, expandir in colunas:
+                titulo = self.label(texto, "phase-caption")
+                if expandir:
+                    titulo.set_hexpand(True)
+                    titulo.set_halign(Gtk.Align.FILL)
+                else:
+                    titulo.set_width_chars(chars)
+                    titulo.set_max_width_chars(chars)
+                linha.pack_start(titulo, expandir, expandir, 0)
+            return cabecalho
+
+        def criar_linha_fase(self, parent, numero, alternada):
+            linha = Gtk.EventBox()
+            contexto = linha.get_style_context()
+            contexto.add_class("phase-row")
+            if alternada:
+                contexto.add_class("phase-row-alt")
+            linha.set_hexpand(True)
+
+            grade = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                            spacing=COL_FASE_ESPACO)
+            grade.set_border_width(10)
+            grade.set_hexpand(True)
+            linha.add(grade)
+
+            numero_label = self.celula_fase(COL_FASE_NUM, "phase-number")
+            numero_label.set_text(f"{numero:02d}")
+            grade.pack_start(numero_label, False, False, 0)
+
+            nome = self.celula_fase(COL_FASE_NOME, "phase-name")
+            grade.pack_start(nome, False, False, 0)
+
+            entrada = self.celula_fase(COL_FASE_ENTRADA, "phase-cell")
+            grade.pack_start(entrada, False, False, 0)
+
+            detalhe = self.celula_fase(0, "phase-cell", expandir=True)
+            grade.pack_start(detalhe, True, True, 0)
+
+            saida = self.celula_fase(COL_FASE_SAIDA, "phase-cell")
+            grade.pack_start(saida, False, False, 0)
+
+            delta = self.celula_fase(COL_FASE_BITS, "phase-cell")
+            grade.pack_start(delta, False, False, 0)
+
+            parent.pack_start(linha, False, True, 0)
+            return {
+                "nome": nome,
+                "entrada": entrada,
+                "saida": saida,
+                "delta": delta,
+                "detalhe": detalhe,
+            }
+
         def montar_resultados_duplos(self):
-            abas = Gtk.Notebook()
-            abas.set_hexpand(True)
-            abas.set_vexpand(True)
+            pilha = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+            pilha.set_hexpand(True)
+            pilha.set_vexpand(False)
 
-            card_tx, self.txt_tx, self.grafico_tx = \
-                self.criar_cartao_resultado("Transmissor (Tx)")
-            abas.append_page(card_tx, self.label("Transmissor (Tx)", "field-label"))
+            card_tx, self.grafico_tx = self.criar_cartao_sinais(
+                "Transmissor (Tx)",
+                "Banda-base gerada e sinal modulado enviado ao meio.")
+            pilha.pack_start(card_tx, False, True, 0)
 
-            card_rx, self.txt_rx, self.grafico_rx = \
-                self.criar_cartao_resultado("Receptor (Rx)")
-            abas.append_page(card_rx, self.label("Receptor (Rx)", "field-label"))
-            return abas
+            card_rx, self.grafico_rx = self.criar_cartao_sinais(
+                "Receptor (Rx)",
+                "Sinal recebido com ruído e banda-base reconstruída.")
+            pilha.pack_start(card_rx, False, True, 0)
+            return pilha
 
-        def criar_cartao_resultado(self, titulo):
+        def criar_cartao_sinais(self, titulo, hint):
             cartao, conteudo = self.novo_card("card")
-            conteudo.pack_start(self.label(titulo, "title"), False, False, 0)
-
-            texto = self.nova_caixa_texto()
-            rolagem = Gtk.ScrolledWindow()
-            rolagem.set_min_content_width(300)
-            rolagem.set_min_content_height(150)
-            rolagem.add(texto)
-            conteudo.pack_start(rolagem, False, True, 0)
+            conteudo.pack_start(self.label(titulo, "section-title"), False, False, 0)
+            conteudo.pack_start(self.label(hint, "section-hint", wrap=True),
+                                False, False, 0)
 
             grafico = GraficoSinal()
+            grafico.set_size_request(-1, 300)
             conteudo.pack_start(grafico, True, True, 0)
-            return cartao, texto, grafico
-
-        @staticmethod
-        def nova_caixa_texto():
-            tv = Gtk.TextView(editable=False, monospace=True)
-            tv.set_wrap_mode(Gtk.WrapMode.CHAR)
-            tv.get_style_context().add_class("console")
-            return tv
+            return cartao, grafico
 
         # lógica da simulação
 
         def inicializar_resultados(self):
             self.definir_banner(
-                "Escolha os parâmetros e rode a simulação para ver bits, quadros, sinais e texto recuperado.",
+                "aguardando transmissão",
                 "ok",
             )
+            self.lbl_resumo_fases.set_text(
+                "Resumo da transmissão aparece aqui depois da primeira execução.")
             for valor in self.metricas.values():
-                valor.set_text("-")
+                if valor is not self.metricas["texto_recuperado"]:
+                    valor.set_text("-")
             for labels in self.linhas_fases:
                 for label in labels.values():
                     label.set_text("-")
-            self.txt_tx.get_buffer().set_text(
-                "TEXTO DE ENTRADA:\n\nSAÍDA DE BITS - APLICAÇÃO:\n\nSAÍDA DE BITS - ENLACE/quadros:")
-            self.txt_rx.get_buffer().set_text(
-                "SAÍDA DE BITS - FÍSICA/demodulados:\n\nRELATÓRIO DOS QUADROS (enlace):\n\nSAÍDA DE TEXTO:")
 
         def definir_banner(self, texto, estado):
-            contexto = self.banner_status.get_style_context()
-            contexto.remove_class("status-error")
-            contexto.remove_class("status-warn")
+            if "texto_recuperado" not in self.metricas:
+                return
+            valor = self.metricas["texto_recuperado"]
+            valor.set_text(texto)
+            contexto = valor.get_style_context()
+            contexto.remove_class("metric-ok")
+            contexto.remove_class("metric-warn")
+            contexto.remove_class("metric-error")
             if estado == "erro":
-                contexto.add_class("status-error")
+                contexto.add_class("metric-error")
             elif estado == "warn":
-                contexto.add_class("status-warn")
-            self.lbl_banner.set_text(texto)
+                contexto.add_class("metric-warn")
+            else:
+                contexto.add_class("metric-ok")
 
         def atualizar_metricas(self, resultado, diagnostico, config, ok):
             self.metricas["bits_aplicacao"].set_text(
@@ -810,19 +1038,23 @@ if BACKEND == "gtk":
                 f"{resultado['potencia_sinal_w']:.4f} W")
             self.metricas["potencia_ruido"].set_text(
                 f"{resultado['potencia_ruido_w']:.4f} W")
-            self.metricas["texto_recuperado"].set_text(
-                "OK" if ok else "com diferenças")
-
             sufixo_continuo = (
                 f" | contínua #{self.contador_continuo}"
                 if self.botao_continuo.get_active() else "")
             self.definir_banner(
                 (
-                    "Texto recuperado corretamente."
-                    if ok else "Texto recuperado com diferenças."
-                ) + f" | sigma {config['ruido_sigma']:.2f} V{sufixo_continuo}",
+                    "texto correto"
+                    if ok else "com diferenças"
+                ) + f" | σ {config['ruido_sigma']:.2f} V{sufixo_continuo}",
                 "ok" if ok else "warn",
             )
+            self.lbl_resumo_fases.set_text(
+                f"Aplicação {plural_bits(diagnostico['bits_aplicacao'])} -> "
+                f"enlace {plural_bits(diagnostico['bits_enlace'])}; "
+                f"EDC +{plural_bits(diagnostico['bits_edc'])}, "
+                f"Hamming +{plural_bits(diagnostico['bits_correcao'])}, "
+                f"enquadramento +{plural_bits(diagnostico['bits_enquadramento'])}, "
+                f"padding da portadora +{plural_bits(diagnostico['padding_portadora'])}.")
 
         def atualizar_tabela_diagnostico(self, diagnostico):
             for labels, fase in zip(self.linhas_fases, diagnostico["fases"]):
@@ -839,6 +1071,11 @@ if BACKEND == "gtk":
                     contexto.add_class("phase-zero")
                 else:
                     contexto.add_class("phase-delta")
+
+        def rolar_resultados_para_topo(self):
+            ajuste = self.rolagem_resultados.get_vadjustment()
+            ajuste.set_value(ajuste.get_lower())
+            return False
 
         def ler_config(self):
             return {
@@ -889,37 +1126,12 @@ if BACKEND == "gtk":
                 self.definir_banner(f"Erro: {erro}", "erro")
                 return
 
-            texto_tx = (
-                f"TEXTO DE ENTRADA:\n{config['texto']}\n\n"
-                f"SAÍDA DE BITS - APLICAÇÃO ({len(resultado['tx_bits_aplicacao'])} bits):\n"
-                f"{bits_str(resultado['tx_bits_aplicacao'])}\n\n"
-                f"SAÍDA DE BITS - ENLACE/quadros ({len(resultado['tx_bits_enlace'])} bits):\n"
-                f"{bits_str(resultado['tx_bits_enlace'])}\n"
-            )
-            self.txt_tx.get_buffer().set_text(texto_tx)
             self.plotar(
                 self.grafico_tx,
                 ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
                 ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]),
             )
 
-            linhas_quadros = "\n".join(
-                f"  Quadro {q['quadro']}: "
-                f"EDC {'OK' if q['edc_ok'] else 'ERRO DETECTADO'}"
-                + (f", {q['corrigidos']} bit(s) corrigido(s) por Hamming"
-                   if config["correcao"] == "hamming" else "")
-                + (", ERRO DUPLO detectado" if q["erro_duplo"] else "")
-                for q in resultado["rx_relatorio_quadros"]) or "  (nenhum quadro recuperado)"
-            texto_rx = (
-                f"SAÍDA DE BITS - FÍSICA/demodulados "
-                f"({len(resultado['rx_bits_fisica'])} bits):\n"
-                f"{bits_str(resultado['rx_bits_fisica'])}\n\n"
-                f"RELATÓRIO DOS QUADROS (enlace):\n{linhas_quadros}\n\n"
-                f"SAÍDA DE BITS - APLICAÇÃO ({len(resultado['rx_bits_aplicacao'])} bits):\n"
-                f"{bits_str(resultado['rx_bits_aplicacao'])}\n\n"
-                f"SAÍDA DE TEXTO:\n{resultado['rx_texto']}\n"
-            )
-            self.txt_rx.get_buffer().set_text(texto_rx)
             self.plotar(
                 self.grafico_rx,
                 ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
@@ -936,7 +1148,9 @@ if BACKEND == "gtk":
             self.atualizar_metricas(resultado, diagnostico, config, ok)
             self.lbl_status.set_text(
                 f"Potência do sinal: {pot_sinal:.3f} W | do ruído: {pot_ruido:.4f} W\n"
-                f"Texto recuperado {'CORRETAMENTE' if ok else 'COM DIFERENÇAS'}.")
+                f"Texto recuperado {'corretamente' if ok else 'com diferenças'}.")
+            if not self.botao_continuo.get_active():
+                GLib.idle_add(self.rolar_resultados_para_topo)
 
         @staticmethod
         def plotar(grafico, *series):
@@ -948,9 +1162,7 @@ if BACKEND == "gtk":
             Gtk.main()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
 # implementação tkinter para fallback quando gtk não está disponível
-# ═════════════════════════════════════════════════════════════════════════════
 else:
 
     COR_FUNDO = "#111827"
@@ -1029,7 +1241,7 @@ else:
             self.create_line(*pontos, fill=COR_LINHA, width=2)
 
     class JanelaSimulador(tk.Tk):
-        """Janela principal do simulador (tkinter — fallback sem GTK)."""
+        """janela principal do simulador em tkinter."""
 
         def __init__(self):
             super().__init__()
@@ -1051,7 +1263,7 @@ else:
         # montagem da tela
 
         def configurar_tema(self):
-            """Define defaults legíveis no Tk antigo do macOS em modo escuro."""
+            """define defaults legíveis no tk em modo escuro."""
             self.option_add("*Background", COR_PAINEL)
             self.option_add("*Foreground", COR_TEXTO)
             self.option_add("*Entry.Background", COR_CAMPO)
