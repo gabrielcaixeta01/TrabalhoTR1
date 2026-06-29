@@ -76,7 +76,7 @@ Para o usuario, o uso e direto. Ele digita um texto e escolhe, na interface graf
 
 A partir dessas escolhas, o simulador converte o texto em bits (camada de aplicacao), monta os quadros com os codigos de deteccao, o Hamming e o enquadramento (camada de enlace) e transforma os bits em sinal eletrico, com modulacao banda-base ou por portadora (camada fisica). O sinal propaga pelo meio, que soma ruido gaussiano, e percorre o caminho inverso no receptor.
 
-O resultado aparece em duas abas: Transmissor e Receptor. Cada aba mostra os bits e sinais de cada camada, o texto recuperado e metricas como potencias, relacao sinal-ruido (SNR) e contagem de erros.
+O resultado aparece em paginas simples de navegacao: Processamento, Bits e quadros, e Graficos. Elas mostram os bits de cada etapa, o texto recuperado, o relatorio de quadros e metricas como potencias, relacao sinal-ruido (SNR) e contagem de erros.
 
 Um diferencial exigido pelo enunciado e a separacao explicita entre transmissor e receptor. Os dois executam em \textit{threads} independentes, que se comunicam apenas por filas (\texttt{queue.Queue}). As filas fazem o papel do meio fisico.
 
@@ -223,12 +223,12 @@ A interface foi feita em GTK 3 (nao em terminal), conforme exigido, pela classe 
 
 O painel esquerdo reune a configuracao: o texto de entrada, o tamanho maximo de quadro, os menus de enquadramento, deteccao, correcao, modulacao digital e modulacao por portadora, e os parametros de ruido $x$ e $\sigma$.
 
-O painel direito mostra metricas gerais, uma tabela de processamento por fase e duas abas, Transmissor e Receptor. Cada aba mostra os bits de cada camada, o texto recuperado, um relatorio por quadro (EDC OK ou com erro, bits corrigidos e erro duplo) e os graficos dos sinais desenhados diretamente em GTK. A separacao entre TX e RX fica explicita, atendendo ao enunciado.
+O painel direito mostra metricas gerais e tres paginas: Processamento, Bits e quadros, e Graficos. A pagina de processamento mostra a tabela fase a fase. A pagina de bits mostra os fluxos TX/RX, o relatorio por quadro (EDC OK ou com erro, bits corrigidos e erro duplo) e a marcacao simples dos bits: \texttt{p} para carga original e \texttt{+} para bits adicionados pelo protocolo. A pagina de graficos mostra quatro sinais desenhados diretamente em GTK: banda-base TX, sinal enviado ao meio, sinal recebido com ruido e banda-base reconstruida no RX. A separacao entre TX e RX fica explicita, atendendo ao enunciado.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.92\linewidth]{interface_gtk.png}
-  \caption{Interface gráfica em GTK 3: painel de configuração à esquerda, métricas no painel principal, tabela por fase e abas Transmissor/Receptor com gráficos nativos dos sinais.}
+  \caption{Interface gráfica em GTK 3: painel de configuração à esquerda, métricas no painel principal e páginas simples para processamento, bits/quadros e gráficos nativos dos sinais.}
   \label{fig:interface_gtk}
 \end{figure}
 

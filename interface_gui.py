@@ -48,11 +48,11 @@ MAX_BITS_TEXTO = 2048
 # caractere (e não pixels) fixa a largura natural do rótulo, então textos longos
 # quebram em várias linhas em vez de empurrar as colunas vizinhas.
 COL_FASE_NUM = 3
-COL_FASE_NOME = 24
-COL_FASE_ENTRADA = 15
-COL_FASE_SAIDA = 20
-COL_FASE_BITS = 11
-COL_FASE_ESPACO = 14
+COL_FASE_NOME = 20
+COL_FASE_ENTRADA = 12
+COL_FASE_SAIDA = 14
+COL_FASE_BITS = 8
+COL_FASE_ESPACO = 8
 
 
 def bits_str(bits):
@@ -74,6 +74,136 @@ def plural_amostras(n):
 
 def plural_quadros(n):
     return f"{n} quadro" if n == 1 else f"{n} quadros"
+
+
+def plural_bytes(n):
+    return f"{n} byte" if n == 1 else f"{n} bytes"
+
+
+def medida_bits_bytes(n_bits):
+    bytes_cheios, resto = divmod(n_bits, 8)
+    if resto == 0:
+        return f"{plural_bits(n_bits)} / {plural_bytes(bytes_cheios)}"
+    if bytes_cheios == 0:
+        return f"{plural_bits(n_bits)} / byte parcial"
+    return f"{plural_bits(n_bits)} / {plural_bytes(bytes_cheios)} + {plural_bits(resto)}"
+
+
+def quadro_bits(bits, adicionados=None, payload=None, rotulo="bits"):
+    if adicionados is None:
+        adicionados = [False] * len(bits)
+    if payload is None:
+        payload = [False] * len(bits)
+
+    grupos = []
+    for i in range(0, min(len(bits), MAX_BITS_TEXTO), 8):
+        grupo_bits = bits[i:i + 8]
+        grupo_add = adicionados[i:i + 8]
+        grupo_payload = payload[i:i + 8]
+        grupos.append({
+            "bits": "".join(str(bit) for bit in grupo_bits),
+            "added": "".join("1" if valor else "0" for valor in grupo_add),
+            "payload": "".join("1" if valor else "0" for valor in grupo_payload),
+        })
+
+    return {
+        "tipo": "bits",
+        "rotulo": rotulo,
+        "medida": medida_bits_bytes(len(bits)),
+        "total_bits": len(bits),
+        "omitidos_bits": max(0, len(bits) - MAX_BITS_TEXTO),
+        "grupos": grupos,
+    }
+
+
+def quadro_nota(texto):
+    return {"tipo": "nota", "texto": texto}
+
+
+def juntar_payloads(payloads):
+    bits = []
+    for payload in payloads:
+        bits += payload
+    return bits
+
+
+def mascara_hamming(bits_codificados):
+    padrao = [True, True, False, True, False, False, False, True]
+    mascara = []
+    for i in range(0, len(bits_codificados), 8):
+        tamanho = min(8, len(bits_codificados) - i)
+        mascara += padrao[:tamanho]
+    return mascara
+
+
+def mascara_payload_hamming(mascara_entrada):
+    mascara = []
+    for i in range(0, len(mascara_entrada), 4):
+        nibble = mascara_entrada[i:i + 4]
+        if len(nibble) < 4:
+            nibble += [False] * (4 - len(nibble))
+        d1, d2, d3, d4 = nibble
+        mascara += [False, False, d1, False, d2, d3, d4, False]
+    return mascara
+
+
+def marcar_enquadramento(payloads, tipo, mascaras_payload=None):
+    bits, adicionados, payload = [], [], []
+    if mascaras_payload is None:
+        mascaras_payload = [[False] * len(item) for item in payloads]
+
+    if tipo == "contagem":
+        for payload_bits, payload_mask in zip(payloads, mascaras_payload):
+            n_bytes = len(payload_bits) // 8
+            cabecalho = camada_enlace.bytes_para_bits([n_bytes])
+            bits += cabecalho + payload_bits
+            adicionados += [True] * len(cabecalho) + [False] * len(payload_bits)
+            payload += [False] * len(cabecalho) + payload_mask
+        return bits, adicionados, payload
+
+    if tipo == "bytes":
+        for payload_bits, payload_mask in zip(payloads, mascaras_payload):
+            flag = camada_enlace.bytes_para_bits([camada_enlace.FLAG_BYTE])
+            bits += flag
+            adicionados += [True] * len(flag)
+            payload += [False] * len(flag)
+            for i, byte in enumerate(camada_enlace.bits_para_bytes(payload_bits)):
+                if byte in (camada_enlace.FLAG_BYTE, camada_enlace.ESC_BYTE):
+                    esc = camada_enlace.bytes_para_bits([camada_enlace.ESC_BYTE])
+                    bits += esc
+                    adicionados += [True] * len(esc)
+                    payload += [False] * len(esc)
+                byte_bits = camada_enlace.bytes_para_bits([byte])
+                bits += byte_bits
+                adicionados += [False] * len(byte_bits)
+                payload += payload_mask[i * 8:i * 8 + 8]
+            bits += flag
+            adicionados += [True] * len(flag)
+            payload += [False] * len(flag)
+        return bits, adicionados, payload
+
+    for payload_bits, payload_mask in zip(payloads, mascaras_payload):
+        bits += camada_enlace.FLAG_BITS
+        adicionados += [True] * len(camada_enlace.FLAG_BITS)
+        payload += [False] * len(camada_enlace.FLAG_BITS)
+        uns = 0
+        for bit, bit_payload in zip(payload_bits, payload_mask):
+            bits.append(bit)
+            adicionados.append(False)
+            payload.append(bit_payload)
+            if bit == 1:
+                uns += 1
+            else:
+                uns = 0
+            if uns == 5:
+                bits.append(0)
+                adicionados.append(True)
+                payload.append(False)
+                uns = 0
+        bits += camada_enlace.FLAG_BITS
+        adicionados += [True] * len(camada_enlace.FLAG_BITS)
+        payload += [False] * len(camada_enlace.FLAG_BITS)
+    return bits, adicionados, payload
 
 
 def resumir_texto(texto, limite=48):
@@ -133,6 +263,42 @@ def diagnosticar_camadas(bits_app, resultado, config):
     bits_enlace = len(fluxo_enquadrado)
     bits_enquadramento = bits_enlace - bits_apos_correcao
 
+    bits_blocos_visual = juntar_payloads(blocos)
+    payload_blocos = [True] * len(bits_blocos_visual)
+
+    bits_edc_visual, mascara_edc, payload_edc_visual = [], [], []
+    mascaras_payload_edc = []
+    for bloco, payload in zip(blocos, payloads_edc):
+        bits_edc_visual += payload
+        mascara_edc += [False] * len(bloco)
+        mascara_edc += [True] * (len(payload) - len(bloco))
+        payload_mask = [True] * len(bloco)
+        payload_mask += [False] * (len(payload) - len(bloco))
+        payload_edc_visual += payload_mask
+        mascaras_payload_edc.append(payload_mask)
+
+    bits_correcao_visual, mascara_correcao, payload_correcao_visual = [], [], []
+    mascaras_payload_correcao = []
+    for payload, payload_mask_entrada in zip(payloads_correcao,
+                                             mascaras_payload_edc):
+        bits_correcao_visual += payload
+        if config["correcao"] == "hamming":
+            mascara_correcao += mascara_hamming(payload)
+            payload_mask_saida = mascara_payload_hamming(payload_mask_entrada)
+        else:
+            mascara_correcao += [False] * len(payload)
+            payload_mask_saida = payload_mask_entrada[:]
+        payload_correcao_visual += payload_mask_saida
+        mascaras_payload_correcao.append(payload_mask_saida)
+
+    (
+        bits_enquadramento_visual,
+        mascara_enquadramento,
+        payload_enquadramento_visual,
+    ) = marcar_enquadramento(
+        payloads_correcao, config["enquadramento"],
+        mascaras_payload_correcao)
+
     amostras_digitais = len(resultado["tx_sinal_banda_base"])
     amostras_tx = len(resultado["tx_sinal_transmitido"])
     if config["mod_portadora"] == "nenhuma":
@@ -149,6 +315,18 @@ def diagnosticar_camadas(bits_app, resultado, config):
             f"{bits_por_simbolo} bit(s) por símbolo; padding de "
             f"{plural_bits(padding_portadora)} quando necessário.")
 
+    bits_portadora_visual = fluxo_enquadrado + [0] * padding_portadora
+    mascara_portadora = [False] * len(fluxo_enquadrado)
+    mascara_portadora += [True] * padding_portadora
+    payload_portadora = payload_enquadramento_visual + [False] * padding_portadora
+
+    payload_rx_fisica = payload_enquadramento_visual[:]
+    if len(resultado["rx_bits_fisica"]) > len(payload_rx_fisica):
+        payload_rx_fisica += [False] * (
+            len(resultado["rx_bits_fisica"]) - len(payload_rx_fisica))
+    payload_rx_fisica = payload_rx_fisica[:len(resultado["rx_bits_fisica"])]
+    payload_rx_aplicacao = [True] * len(resultado["rx_bits_aplicacao"])
+
     return {
         "bits_aplicacao": len(bits_app),
         "bits_enlace": bits_enlace,
@@ -163,6 +341,8 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": f'"{resumir_texto(config["texto"])}"',
                 "saida": f"{len(config['texto'].encode('utf-8'))} byte(s) UTF-8",
                 "delta": "0 bits",
+                "quadro": quadro_nota(
+                    "Texto original; a próxima fase mostra os bytes UTF-8 em bits."),
                 "detalhe": "Mensagem original recebida pela aplicação antes de virar bits.",
             },
             {
@@ -170,6 +350,8 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": f"{len(config['texto'].encode('utf-8'))} byte(s) UTF-8",
                 "saida": plural_bits(len(bits_app)),
                 "delta": "0 bits",
+                "quadro": quadro_bits(bits_app, payload=[True] * len(bits_app),
+                                      rotulo="UTF-8"),
                 "detalhe": "Cada byte UTF-8 é representado por 8 bits.",
             },
             {
@@ -177,6 +359,9 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_bits(len(bits_app)),
                 "saida": f"{plural_quadros(len(blocos))}, {plural_bits(bits_blocos)}",
                 "delta": "0 bits",
+                "quadro": quadro_bits(bits_blocos_visual,
+                                      payload=payload_blocos,
+                                      rotulo="quadros"),
                 "detalhe": f"Cada quadro carrega até {config['tam_max_quadro']} byte(s).",
             },
             {
@@ -184,6 +369,9 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_bits(bits_blocos),
                 "saida": plural_bits(bits_apos_edc),
                 "delta": plural_bits(bits_edc),
+                "quadro": quadro_bits(bits_edc_visual, mascara_edc,
+                                      payload_edc_visual,
+                                      rotulo="payload + EDC"),
                 "detalhe": detalhe_deteccao(config["deteccao"], len(blocos)),
             },
             {
@@ -191,6 +379,9 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_bits(bits_apos_edc),
                 "saida": plural_bits(bits_apos_correcao),
                 "delta": plural_bits(bits_correcao),
+                "quadro": quadro_bits(bits_correcao_visual, mascara_correcao,
+                                      payload_correcao_visual,
+                                      rotulo="payload codificado"),
                 "detalhe": detalhe_correcao(config["correcao"]),
             },
             {
@@ -198,6 +389,10 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_bits(bits_apos_correcao),
                 "saida": plural_bits(bits_enlace),
                 "delta": plural_bits(bits_enquadramento),
+                "quadro": quadro_bits(bits_enquadramento_visual,
+                                      mascara_enquadramento,
+                                      payload_enquadramento_visual,
+                                      rotulo="quadro Tx"),
                 "detalhe": detalhe_enquadramento(config["enquadramento"], len(blocos)),
             },
             {
@@ -205,6 +400,9 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_bits(bits_enlace),
                 "saida": plural_amostras(amostras_digitais),
                 "delta": "0 bits",
+                "quadro": quadro_bits(fluxo_enquadrado,
+                                      payload=payload_enquadramento_visual,
+                                      rotulo="bits modulados"),
                 "detalhe": (
                     f"Cada bit vira {camada_fisica.AMOSTRAS_POR_BIT} amostras em Volts."
                 ),
@@ -214,6 +412,9 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_bits(bits_enlace),
                 "saida": saida_portadora,
                 "delta": plural_bits(padding_portadora),
+                "quadro": quadro_bits(bits_portadora_visual, mascara_portadora,
+                                      payload_portadora,
+                                      rotulo="bits por símbolo"),
                 "detalhe": detalhe_portadora,
             },
             {
@@ -221,6 +422,8 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_amostras(amostras_tx),
                 "saida": plural_amostras(len(resultado["rx_sinal_recebido"])),
                 "delta": "0 bits",
+                "quadro": quadro_nota(
+                    f"{plural_amostras(amostras_tx)} no meio; o ruído altera amostras."),
                 "detalhe": (
                     f"Ruído gaussiano: média {config['ruido_media']:.2f} V, "
                     f"sigma {config['ruido_sigma']:.2f} V por amostra."
@@ -231,9 +434,25 @@ def diagnosticar_camadas(bits_app, resultado, config):
                 "entrada": plural_bits(len(resultado["rx_bits_aplicacao"])),
                 "saida": f'"{resumir_texto(resultado["rx_texto"])}"',
                 "delta": "0 bits",
+                "quadro": quadro_bits(resultado["rx_bits_aplicacao"],
+                                      payload=payload_rx_aplicacao,
+                                      rotulo="bits RX"),
                 "detalhe": "Demodula, valida enlace e reconstrói o texto de aplicação.",
             },
         ],
+        "quadros_bits": {
+            "texto_entrada": quadro_bits(bits_app, payload=[True] * len(bits_app),
+                                         rotulo="UTF-8"),
+            "fisica_rx": quadro_bits(resultado["rx_bits_fisica"],
+                                     payload=payload_rx_fisica,
+                                     rotulo="bits demodulados"),
+            "quadros_rx": quadro_bits(resultado["rx_bits_aplicacao"],
+                                      payload=payload_rx_aplicacao,
+                                      rotulo="payload validado"),
+            "aplicacao_rx": quadro_bits(resultado["rx_bits_aplicacao"],
+                                        payload=payload_rx_aplicacao,
+                                        rotulo="bits RX"),
+        },
     }
 
 
@@ -266,6 +485,68 @@ def formatar_diagnostico(diagnostico, resultado, config):
             f"    delta:   {fase['delta']}\n"
             f"    nota:    {fase['detalhe']}"
         )
+    return "\n".join(linhas)
+
+
+def quadro_bits_para_texto(quadro):
+    if not quadro:
+        return "sem bits"
+    if quadro.get("tipo") == "nota":
+        return quadro.get("texto", "")
+
+    linhas = [
+        f"{quadro.get('rotulo', 'bits')} ({quadro.get('medida', '')})",
+        "p = carga original | + = bit adicionado pelo protocolo | . = outro",
+    ]
+    grupos = quadro.get("grupos", [])
+    if not grupos:
+        linhas.append("(sem bits)")
+        return "\n".join(linhas)
+
+    bits = []
+    marcas = []
+    for grupo in grupos:
+        grupo_bits = grupo.get("bits", "")
+        grupo_add = grupo.get("added", "")
+        grupo_payload = grupo.get("payload", "")
+        bits.append(grupo_bits)
+        marcas.append("".join(
+            "+" if grupo_add[i:i + 1] == "1"
+            else ("p" if grupo_payload[i:i + 1] == "1" else ".")
+            for i in range(len(grupo_bits))
+        ))
+
+    linhas.append("bits : " + " ".join(bits))
+    linhas.append("marca: " + " ".join(marcas))
+    omitidos = quadro.get("omitidos_bits", 0)
+    if omitidos:
+        linhas.append(f"... {omitidos} bits omitidos na visualização")
+    return "\n".join(linhas)
+
+
+def formatar_bits_por_fase(diagnostico):
+    linhas = ["BITS POR FASE", ""]
+    for indice, fase in enumerate(diagnostico["fases"], start=1):
+        linhas.append(f"{indice:02d}. {fase['nome']}")
+        linhas.append(quadro_bits_para_texto(fase.get("quadro")))
+        linhas.append("")
+    return "\n".join(linhas).rstrip()
+
+
+def formatar_relatorio_quadros(resultado, config):
+    linhas = ["RELATÓRIO DOS QUADROS RECEBIDOS"]
+    for quadro in resultado["rx_relatorio_quadros"]:
+        linha = (
+            f"Quadro {quadro['quadro']}: "
+            f"EDC {'OK' if quadro['edc_ok'] else 'ERRO DETECTADO'}"
+        )
+        if config["correcao"] == "hamming":
+            linha += f", {quadro['corrigidos']} bit(s) corrigido(s)"
+        if quadro["erro_duplo"]:
+            linha += ", ERRO DUPLO detectado"
+        linhas.append(linha)
+    if len(linhas) == 1:
+        linhas.append("(nenhum quadro recuperado)")
     return "\n".join(linhas)
 
 
@@ -395,7 +676,14 @@ if BACKEND == "gtk":
             self.contador_continuo = 0
             self.metricas = {}
             self.linhas_fases = []
+            self.textos_bits = {}
+            self.graficos = {}
             self.aplicar_tema_claro()
+
+            fundo = Gtk.EventBox()
+            fundo.set_visible_window(True)
+            fundo.get_style_context().add_class("app-root")
+            self.add(fundo)
 
             raiz = Gtk.Grid(column_spacing=16)
             raiz.set_border_width(16)
@@ -404,7 +692,7 @@ if BACKEND == "gtk":
             raiz.set_halign(Gtk.Align.FILL)
             raiz.set_valign(Gtk.Align.FILL)
             raiz.get_style_context().add_class("app-root")
-            self.add(raiz)
+            fundo.add(raiz)
 
             painel_config = self.montar_painel_config()
             painel_config.set_hexpand(True)
@@ -414,6 +702,7 @@ if BACKEND == "gtk":
             config_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
             config_scroll.set_min_content_width(340)
             config_scroll.set_shadow_type(Gtk.ShadowType.NONE)
+            config_scroll.set_can_focus(False)
             config_scroll.add(painel_config)
             config_scroll.set_hexpand(False)
             config_scroll.set_vexpand(True)
@@ -462,7 +751,7 @@ if BACKEND == "gtk":
                         ns.setAppearance_(aqua)
                     ns.setOpaque_(True)
                     ns.setBackgroundColor_(fundo)
-                    ns.setTitlebarAppearsTransparent_(True)
+                    ns.setTitlebarAppearsTransparent_(False)
             except Exception:
                 pass
             return False
@@ -487,6 +776,28 @@ if BACKEND == "gtk":
             window, .app-root, .main-panel, scrolledwindow, viewport {
                 background: #eceff5;
                 color: #0f172a;
+            }
+            scrolledwindow, scrolledwindow:focus, viewport, viewport:focus,
+            stack, stack:focus, grid, grid:focus, box, box:focus {
+                border: 0;
+                outline: none;
+                box-shadow: none;
+            }
+            scrolledwindow.frame, scrolledwindow.frame:focus,
+            .frame, .frame:focus {
+                border: 0;
+                border-style: none;
+                outline: none;
+                box-shadow: none;
+            }
+            scrolledwindow undershoot,
+            scrolledwindow overshoot,
+            scrolledwindow junction,
+            scrolledwindow scrollbar {
+                background: transparent;
+                background-image: none;
+                border: 0;
+                box-shadow: none;
             }
             /* mantemos a decoracao nativa do macOS (sem CSD, que no Quartz
                cria uma caixa preta em volta da janela). a barra de titulo e
@@ -744,6 +1055,45 @@ if BACKEND == "gtk":
                 border: 0;
                 box-shadow: none;
             }
+            stackswitcher {
+                background: transparent;
+                padding: 0;
+            }
+            stackswitcher button {
+                min-height: 36px;
+                padding: 6px 14px;
+                border-radius: 10px;
+                background: #ffffff;
+                color: #1e293b;
+                border: 1px solid #dbe3ef;
+                font-weight: 800;
+            }
+            stackswitcher button:checked {
+                background: #2563eb;
+                color: #ffffff;
+                border-color: #1d4ed8;
+            }
+            stackswitcher button:checked label { color: #ffffff; }
+            textview, textview text {
+                background: #ffffff;
+                color: #0f172a;
+                font-family: "SF Mono", "Cascadia Mono", "Consolas", monospace;
+                font-size: 12px;
+            }
+            .bits-box {
+                background: #ffffff;
+                border: 1px solid #dbe3ef;
+                border-radius: 10px;
+            }
+            .bits-title {
+                color: #0f172a;
+                font-size: 14px;
+                font-weight: 900;
+            }
+            .bits-hint {
+                color: #64748b;
+                font-size: 12px;
+            }
             """
             provider = Gtk.CssProvider()
             provider.load_from_data(css)
@@ -900,28 +1250,44 @@ if BACKEND == "gtk":
             return combo._opcoes[combo.get_active()][1]
 
         def montar_painel_resultados(self):
-            # uma única página rolável reúne métricas, tabela de fases e os
-            # gráficos Tx/Rx, então tudo aparece no mesmo lugar.
-            rolagem = Gtk.ScrolledWindow()
-            self.rolagem_resultados = rolagem
-            rolagem.get_style_context().add_class("results-scroll")
-            rolagem.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-            rolagem.set_hexpand(True)
-            rolagem.set_vexpand(True)
-            rolagem.set_shadow_type(Gtk.ShadowType.NONE)
-
             painel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
             painel.get_style_context().add_class("main-panel")
             painel.set_border_width(4)
             painel.set_hexpand(True)
-            painel.set_valign(Gtk.Align.START)
+            painel.set_vexpand(True)
+            painel.set_valign(Gtk.Align.FILL)
 
             painel.pack_start(self.montar_metricas(), False, True, 0)
-            painel.pack_start(self.montar_tabela_diagnostico(), False, True, 0)
-            painel.pack_start(self.montar_resultados_duplos(), False, True, 0)
+            painel.pack_start(self.montar_paginas_resultados(), True, True, 0)
+            self.rolagem_resultados = None
+            return painel
 
-            rolagem.add(painel)
-            return rolagem
+        def montar_paginas_resultados(self):
+            caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            caixa.set_hexpand(True)
+            caixa.set_vexpand(True)
+
+            self.stack_resultados = Gtk.Stack()
+            self.stack_resultados.set_transition_type(
+                Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+            self.stack_resultados.set_hexpand(True)
+            self.stack_resultados.set_vexpand(True)
+
+            seletor = Gtk.StackSwitcher()
+            seletor.set_stack(self.stack_resultados)
+            seletor.set_halign(Gtk.Align.START)
+            caixa.pack_start(seletor, False, False, 0)
+
+            self.stack_resultados.add_titled(
+                self.montar_tabela_diagnostico(), "processamento",
+                "Processamento")
+            self.stack_resultados.add_titled(
+                self.montar_pagina_bits(), "bits", "Bits e quadros")
+            self.stack_resultados.add_titled(
+                self.montar_pagina_graficos(), "graficos", "Gráficos")
+
+            caixa.pack_start(self.stack_resultados, True, True, 0)
+            return caixa
 
         def montar_metricas(self):
             grade = Gtk.Grid(column_spacing=10, row_spacing=10)
@@ -944,8 +1310,8 @@ if BACKEND == "gtk":
                 valor.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
                 conteudo.pack_start(valor, False, False, 0)
                 self.metricas[chave] = valor
-                coluna = indice % 3
-                linha = indice // 3
+                coluna = indice % 2
+                linha = indice // 2
                 grade.attach(cartao, coluna, linha, 1, 1)
             return grade
 
@@ -1055,30 +1421,84 @@ if BACKEND == "gtk":
                 "detalhe": detalhe,
             }
 
-        def montar_resultados_duplos(self):
-            pilha = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-            pilha.set_hexpand(True)
-            pilha.set_vexpand(False)
+        def montar_pagina_bits(self):
+            pagina = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            pagina.set_hexpand(True)
+            pagina.set_vexpand(True)
 
-            card_tx, self.grafico_tx = self.criar_cartao_sinais(
-                "Transmissor (Tx)",
-                "Banda-base gerada e sinal modulado enviado ao meio.")
-            pilha.pack_start(card_tx, False, True, 0)
+            itens = [
+                ("tx_app", "TX - aplicação",
+                 "Texto convertido para bits UTF-8."),
+                ("tx_enlace", "TX - enlace",
+                 "Fluxo depois de EDC, Hamming e enquadramento."),
+                ("rx_fisica", "RX - física",
+                 "Bits demodulados a partir do sinal recebido."),
+                ("rx_app", "RX - aplicação",
+                 "Payload validado e reconstruído como texto."),
+                ("quadros", "Quadros recebidos",
+                 "Resultado do EDC e correções por Hamming."),
+                ("fases_bits", "Bits por fase",
+                 "p = payload original, + = bits adicionados pelo protocolo."),
+            ]
+            for chave, titulo, hint in itens:
+                card = self.criar_cartao_texto_bits(chave, titulo, hint)
+                pagina.pack_start(card, False, True, 0)
 
-            card_rx, self.grafico_rx = self.criar_cartao_sinais(
-                "Receptor (Rx)",
-                "Sinal recebido com ruído e banda-base reconstruída.")
-            pilha.pack_start(card_rx, False, True, 0)
-            return pilha
+            return pagina
 
-        def criar_cartao_sinais(self, titulo, hint):
+        def criar_cartao_texto_bits(self, chave, titulo, hint):
+            cartao, conteudo = self.novo_card("card")
+            conteudo.pack_start(self.label(titulo, "bits-title"), False, False, 0)
+            conteudo.pack_start(self.label(hint, "bits-hint", wrap=True),
+                                False, False, 0)
+
+            texto = Gtk.TextView()
+            texto.set_editable(False)
+            texto.set_cursor_visible(False)
+            texto.set_monospace(True)
+            texto.set_wrap_mode(Gtk.WrapMode.CHAR)
+            texto.get_style_context().add_class("bits-box")
+            texto.set_size_request(-1, 170 if chave != "fases_bits" else 260)
+
+            rolagem = Gtk.ScrolledWindow()
+            rolagem.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            rolagem.set_shadow_type(Gtk.ShadowType.NONE)
+            rolagem.add(texto)
+            conteudo.pack_start(rolagem, True, True, 0)
+
+            self.textos_bits[chave] = texto
+            return cartao
+
+        def montar_pagina_graficos(self):
+            pagina = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            pagina.set_hexpand(True)
+            pagina.set_vexpand(True)
+
+            itens = [
+                ("tx_banda_base", "1. Banda-base (Tx)",
+                 "Codificação digital antes da portadora."),
+                ("tx_transmitido", "2. Sinal enviado ao meio (Tx)",
+                 "Portadora ou banda-base que sai do transmissor."),
+                ("rx_recebido", "3. Sinal recebido com ruído (Rx)",
+                 "Mesmo sinal após o canal gaussiano."),
+                ("rx_banda_base", "4. Banda-base reconstruída (Rx)",
+                 "Bits demodulados redesenhados para comparação."),
+            ]
+
+            for chave, titulo, hint in itens:
+                card, grafico = self.criar_cartao_grafico(titulo, hint)
+                self.graficos[chave] = grafico
+                pagina.pack_start(card, False, True, 0)
+            return pagina
+
+        def criar_cartao_grafico(self, titulo, hint):
             cartao, conteudo = self.novo_card("card")
             conteudo.pack_start(self.label(titulo, "section-title"), False, False, 0)
             conteudo.pack_start(self.label(hint, "section-hint", wrap=True),
                                 False, False, 0)
 
             grafico = GraficoSinal()
-            grafico.set_size_request(-1, 300)
+            grafico.set_size_request(-1, 230)
             conteudo.pack_start(grafico, True, True, 0)
             return cartao, grafico
 
@@ -1097,6 +1517,10 @@ if BACKEND == "gtk":
             for labels in self.linhas_fases:
                 for label in labels.values():
                     label.set_text("-")
+            for texto in self.textos_bits.values():
+                texto.get_buffer().set_text("Clique em Transmitir uma vez.")
+            for grafico in self.graficos.values():
+                grafico.set_series([])
 
         def definir_banner(self, texto, estado):
             if "texto_recuperado" not in self.metricas:
@@ -1158,7 +1582,35 @@ if BACKEND == "gtk":
                 else:
                     contexto.add_class("phase-delta")
 
+        def atualizar_bits(self, resultado, diagnostico, config):
+            textos = {
+                "tx_app": (
+                    f"TEXTO DE ENTRADA:\n{config['texto']}\n\n"
+                    f"BITS DA APLICAÇÃO ({len(resultado['tx_bits_aplicacao'])} bits):\n"
+                    f"{bits_str(resultado['tx_bits_aplicacao'])}"
+                ),
+                "tx_enlace": (
+                    f"BITS NO ENLACE ({len(resultado['tx_bits_enlace'])} bits):\n"
+                    f"{bits_str(resultado['tx_bits_enlace'])}"
+                ),
+                "rx_fisica": (
+                    f"BITS DEMODULADOS ({len(resultado['rx_bits_fisica'])} bits):\n"
+                    f"{bits_str(resultado['rx_bits_fisica'])}"
+                ),
+                "rx_app": (
+                    f"BITS DA APLICAÇÃO RX ({len(resultado['rx_bits_aplicacao'])} bits):\n"
+                    f"{bits_str(resultado['rx_bits_aplicacao'])}\n\n"
+                    f"TEXTO RECUPERADO:\n{resultado['rx_texto']}"
+                ),
+                "quadros": formatar_relatorio_quadros(resultado, config),
+                "fases_bits": formatar_bits_por_fase(diagnostico),
+            }
+            for chave, texto in textos.items():
+                self.textos_bits[chave].get_buffer().set_text(texto)
+
         def rolar_resultados_para_topo(self):
+            if self.rolagem_resultados is None:
+                return False
             ajuste = self.rolagem_resultados.get_vadjustment()
             ajuste.set_value(ajuste.get_lower())
             return False
@@ -1213,20 +1665,28 @@ if BACKEND == "gtk":
                 return
 
             self.plotar(
-                self.grafico_tx,
+                self.graficos["tx_banda_base"],
                 ("Sinal banda-base (Tx)", resultado["tx_sinal_banda_base"]),
-                ("Sinal transmitido ao meio (Tx)", resultado["tx_sinal_transmitido"]),
             )
-
             self.plotar(
-                self.grafico_rx,
+                self.graficos["tx_transmitido"],
+                ("Sinal transmitido ao meio (Tx)",
+                 resultado["tx_sinal_transmitido"]),
+            )
+            self.plotar(
+                self.graficos["rx_recebido"],
                 ("Sinal recebido com ruído (Rx)", resultado["rx_sinal_recebido"]),
-                ("Banda-base reconstruído (Rx)", resultado["rx_sinal_banda_base"]),
+            )
+            self.plotar(
+                self.graficos["rx_banda_base"],
+                ("Banda-base reconstruída (Rx)",
+                 resultado["rx_sinal_banda_base"]),
             )
 
             diagnostico = diagnosticar_camadas(
                 resultado["tx_bits_aplicacao"], resultado, config)
             self.atualizar_tabela_diagnostico(diagnostico)
+            self.atualizar_bits(resultado, diagnostico, config)
 
             ok = (resultado["rx_texto"] == config["texto"])
             pot_sinal = resultado["potencia_sinal_w"]

@@ -118,6 +118,7 @@ def main():
 
     print("\nRESULTADO GERAL:", "TODOS OS TESTES PASSARAM" if ok
           else "HÁ TESTES FALHANDO")
+    raise SystemExit(0 if ok else 1)
 
 
 if __name__ == "__main__":

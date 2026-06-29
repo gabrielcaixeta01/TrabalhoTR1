@@ -144,4 +144,3 @@ esta versionada em:
 - `docs/APRESENTACAO_TR1.md`
 - `relatorio/fontes/apresentacao_tr1.tex`
 - `relatorio/pdfs/apresentacao_tr1.pdf`
-

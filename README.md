@@ -24,7 +24,16 @@ Ele implementa manualmente:
 - ask, fsk, qpsk e 16-qam;
 - canal com ruído gaussiano em volts.
 
+A interface principal é GTK 3. Ela organiza a defesa em três páginas simples:
+processamento por fase, bits/quadros e gráficos dos sinais TX/RX.
+
 ## Como rodar
+
+Dependências da interface GTK em Debian/Ubuntu:
+
+```bash
+sudo apt install python3-gi gir1.2-gtk-3.0
+```
 
 Interface gtk:
 
@@ -42,7 +51,7 @@ aparência clara via `pyobjc` (opcional; sem ele a interface funciona normalment
 Execução direta:
 
 ```bash
-.venv-gtk/bin/python simulador.py
+python3 simulador.py
 ```
 
 Testes:

@@ -34,11 +34,33 @@ Tempo alvo: **11 a 12 minutos**. O tempo mínimo pedido é 10 minutos, então o 
 5. Gustavo entra nos excertos principais de enlace e física.
 6. Fernando mostra interface, testes e fechamento.
 
+## ajuste de discurso para a primeira fase
+
+Como todos os grupos receberam a mesma proposta, a apresentação não precisa
+tratar o enunciado como novidade. A abertura deve ser curta e deve deslocar o
+foco para as decisões da nossa entrega:
+
+- onde exatamente o ruído entra;
+- como o bit vira amostra em volts;
+- como o receptor decide o bit ou símbolo recebido;
+- por que EDC vem antes do Hamming no transmissor;
+- como os testes provam que o pipeline completo funciona.
+
+Frase-guia:
+
+> A proposta era comum a todos os grupos; o diferencial da nossa entrega está
+> no pipeline completo, manual e testável: texto, bits, quadros, sinal, ruído,
+> demodulação, verificação e texto recuperado.
+
 ## 1. abertura - Fernando - 1 minuto
 
 Fala sugerida:
 
-> O trabalho simula a comunicação entre um transmissor e um receptor. A mensagem começa como texto, vira bits, é organizada em quadros, recebe mecanismos de detecção e correção de erros, vira sinal elétrico, atravessa um meio com ruído gaussiano e depois é reconstruída no receptor.
+> Como todos receberam a mesma proposta, a nossa apresentação vai focar menos
+> em repetir o enunciado e mais em mostrar como implementamos cada decisão. A
+> mensagem começa como texto, vira bits, é organizada em quadros, recebe
+> detecção e correção de erros, vira sinal em volts, atravessa um meio com
+> ruído gaussiano e depois é reconstruída no receptor.
 
 Fluxo para falar:
 
@@ -53,6 +75,7 @@ Pontos obrigatórios:
 - transmissor e receptor são separados;
 - o ruído entra no meio;
 - crc, hamming, enquadramento e modulações foram implementados manualmente.
+- a defesa deve insistir em decisões de projeto, não só listar protocolos.
 
 ## 2. conceitos antes do código - Fernando e Gustavo - 2 minutos
 
@@ -285,12 +308,24 @@ Fala sugerida:
 Exemplo de defesa:
 
 - nrz é simples, mas pode ter componente dc;
-- manchester ajuda no sincronismo porque sempre tem transição;
+- manchester ajuda no sincronismo porque sempre tem transição no meio do bit;
 - bipolar reduz componente dc alternando os bits 1.
+
+Convenção adotada para Manchester:
+
+- Tanenbaum/G.E. Thomas;
+- bit `0`: transição baixo-para-alto;
+- bit `1`: transição alto-para-baixo;
+- demodulação: compara a média da primeira metade com a média da segunda.
 
 ### 5.2 portadora e i/q
 
 Arquivo: `camada_fisica.py`.
+
+Ponto importante para defesa:
+
+> A modulação gera o sinal limpo. O ruído não faz parte da modulação; ele é
+> somado depois, no meio de comunicação, amostra por amostra.
 
 Excerto:
 
@@ -415,31 +450,99 @@ Fala sugerida:
 
 ## perguntas prováveis
 
-**Por que não usar `zlib` para crc?**
+### perguntas mais prováveis com resposta curta
+
+**1. Como vocês modulam com ruído?**
+
+Nós não modulamos "com" ruído. Primeiro a camada física gera o sinal limpo a
+partir dos bits. Depois `meio_comunicacao.transmitir` soma
+`random.gauss(media, sigma)` em cada amostra. O receptor demodula esse sinal
+ruidoso.
+
+**2. Como foi feita a modulação?**
+
+Em banda-base, cada bit vira um conjunto de amostras em volts: NRZ usa `+V` e
+`-V`, Manchester usa transição no meio do bit e Bipolar AMI alterna a
+polaridade dos bits 1. Na portadora, cada símbolo vira uma onda
+`I*cos - Q*sen`; ASK muda amplitude, FSK muda frequência, QPSK usa 2 bits por
+símbolo e 16-QAM usa 4 bits por símbolo.
+
+**3. O ruído entra antes ou depois da modulação?**
+
+Depois. A ordem é: bits -> modulação -> sinal limpo -> meio ruidoso -> sinal
+recebido -> demodulação.
+
+**4. Qual é o jeito certo de colocar o bit de paridade?**
+
+No nosso código, a paridade é calculada sobre o bloco inteiro e anexada como um
+byte de EDC: sete zeros mais o bit de paridade. Ela não é colocada no final de
+cada byte original da mensagem.
+
+**5. Por que não usar `zlib` para crc?**
 
 Porque o enunciado proíbe bibliotecas prontas para os protocolos. O crc foi implementado bit a bit.
 
-**Por que o hamming vem depois do edc no transmissor?**
+**6. Por que usar paridade se CRC-32 é melhor?**
+
+Porque o trabalho pede comparar mecanismos. A paridade é simples e tem baixo
+custo, mas só detecta quantidade ímpar de erros. O CRC-32 detecta muito melhor,
+principalmente erros em rajada, mas insere 32 bits por bloco.
+
+**7. Por que o hamming vem depois do edc no transmissor?**
 
 Para proteger também os bits de verificação. No receptor, o hamming tenta corrigir antes de verificar o edc.
 
-**Por que usar hamming(8,4), e não hamming(7,4)?**
+**8. Por que usar hamming(8,4), e não hamming(7,4)?**
 
 Porque o bit extra de paridade geral permite detectar erro duplo e mantém o resultado alinhado em bytes.
 
-**Por que 16-QAM é mais sensível a ruído?**
+**9. Expliquem o Hamming do projeto.**
+
+Cada 4 bits de dados viram 8 bits: três bits de paridade de Hamming, quatro
+bits de dados e um bit de paridade geral. No receptor, a síndrome aponta erro
+simples corrigível; a paridade geral permite diferenciar erro simples de erro
+duplo.
+
+**10. Quais são as vantagens e desvantagens de NRZ-Polar e 16-QAM?**
+
+NRZ-Polar é simples e robusto para simulação em banda-base, mas pode ter longas
+sequências sem transição e componente DC. 16-QAM carrega 4 bits por símbolo e é
+mais eficiente espectralmente, mas os pontos da constelação ficam próximos e a
+demodulação fica mais sensível ao ruído.
+
+**11. Por que 16-QAM é mais sensível a ruído?**
 
 Porque os pontos da constelação ficam mais próximos. Uma variação menor já pode empurrar o símbolo para a decisão errada.
 
-**O que acontece se o ruído aumentar muito?**
+**12. O que significa "não dá para ver o sinal que está chegando" na portadora?**
+
+Dá para ver o sinal recebido como amostras ruidosas. O que não dá é olhar a onda
+e ler diretamente os bits como em um desenho ideal. Por isso o receptor estima
+`I` e `Q` por correlação e escolhe o ponto válido mais próximo da constelação.
+
+**13. O que acontece se o ruído aumentar muito?**
 
 O demodulador passa a errar bits. O hamming pode corrigir erro simples por bloco, mas erros múltiplos podem ser apenas detectados ou até escapar dependendo do edc.
 
-**A interface web substitui a gtk?**
+**14. Como funciona o enquadramento com flags?**
+
+No byte stuffing, o quadro começa e termina com `0x7E`; se `0x7E` ou `0x7D`
+aparecem nos dados, o transmissor insere `0x7D` antes. No bit stuffing, a flag
+é `01111110`; depois de cinco bits 1 seguidos no payload, o transmissor insere
+um 0.
+
+**15. Como vocês testaram?**
+
+`testes.py` cobre conversão texto/bits, os três enquadramentos, paridade,
+checksum, CRC, Hamming, modulações banda-base, modulações por portadora e
+simulação completa. O CRC também é conferido com o vetor clássico
+`123456789 -> 0xCBF43926`.
+
+**16. A interface web substitui a gtk?**
 
 Não. A interface principal é gtk. A web é opcional e chama a mesma função do simulador.
 
-**Como provar que o crc está correto?**
+**17. Como provar que o crc está correto?**
 
 Pelo vetor clássico `123456789`, que deve retornar `0xcbf43926`.
 

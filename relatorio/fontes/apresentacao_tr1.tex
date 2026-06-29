@@ -47,7 +47,7 @@ formal permanece em \texttt{relatorio\_tr1.pdf}.
 
 \section{Planejamento de tempo}
 
-\begin{tabular}{p{4.1cm}p{1.8cm}p{2.6cm}p{6cm}}
+\begin{tabular}{p{4.1cm}p{1.8cm}p{3.1cm}p{5.5cm}}
 \toprule
 \textbf{Bloco} & \textbf{Tempo} & \textbf{Fala} & \textbf{Foco} \\
 \midrule
@@ -61,11 +61,30 @@ Fechamento & 30 s & Fernando & conclusão \\
 \bottomrule
 \end{tabular}
 
+\section{Ajuste de discurso para a primeira fase}
+
+Como todos os grupos receberam a mesma proposta, a apresentação não precisa
+tratar o enunciado como novidade. A abertura deve ser curta e deve deslocar o
+foco para as decisões da nossa entrega:
+
+\begin{itemize}
+  \item onde exatamente o ruído entra;
+  \item como o bit vira amostra em volts;
+  \item como o receptor decide o bit ou símbolo recebido;
+  \item por que EDC vem antes do Hamming no transmissor;
+  \item como os testes provam que o pipeline completo funciona.
+\end{itemize}
+
+Frase-guia: a proposta era comum a todos os grupos; o diferencial da nossa
+entrega está no pipeline completo, manual e testável: texto, bits, quadros,
+sinal, ruído, demodulação, verificação e texto recuperado.
+
 \section{Abertura - Fernando}
 
-Fala sugerida: o trabalho simula a comunicação entre um transmissor e um
-receptor. A mensagem começa como texto, vira bits, é organizada em quadros,
-recebe detecção e correção de erros, vira sinal elétrico, atravessa um meio
+Fala sugerida: como todos receberam a mesma proposta, a nossa apresentação vai
+focar menos em repetir o enunciado e mais em mostrar como implementamos cada
+decisão. A mensagem começa como texto, vira bits, é organizada em quadros,
+recebe detecção e correção de erros, vira sinal em volts, atravessa um meio
 com ruído gaussiano e depois é reconstruída no receptor.
 
 \begin{center}
@@ -73,7 +92,8 @@ com ruído gaussiano e depois é reconstruída no receptor.
 \end{center}
 
 Pontos obrigatórios: a interface principal é gtk; tx e rx são separados; o
-ruído entra no meio; crc, hamming, enquadramento e modulações são manuais.
+ruído entra no meio; crc, hamming, enquadramento e modulações são manuais; a
+defesa deve insistir em decisões de projeto, não só listar protocolos.
 
 \section{Conceitos antes do código}
 
@@ -220,7 +240,16 @@ Em banda-base, bits viram níveis de tensão. NRZ-Polar usa +V e -V; Manchester
 usa transição no meio do bit; Bipolar AMI usa 0 V para zero e alterna a
 polaridade dos bits 1.
 
+Para o Manchester, a convenção adotada é a de Tanenbaum/G.E.~Thomas: o bit 0
+faz transição baixo-para-alto e o bit 1 faz transição alto-para-baixo. A
+demodulação compara a média da primeira metade do bit com a média da segunda
+metade.
+
 \subsection{Portadora e i/q}
+
+Ponto importante para defesa: a modulação gera o sinal limpo. O ruído não faz
+parte da modulação; ele é somado depois, no meio de comunicação, amostra por
+amostra.
 
 \begin{lstlisting}[language=Python]
 def onda(i, q, ciclos):
@@ -299,20 +328,83 @@ texto, bits, quadros, sinal, ruído e texto recuperado.
 
 \section{Perguntas prováveis}
 
-\textbf{Por que não usar zlib para crc?} Porque o enunciado proíbe bibliotecas
-prontas para os protocolos.
+\textbf{1. Como vocês modulam com ruído?} Nós não modulamos ``com'' ruído.
+Primeiro a camada física gera o sinal limpo a partir dos bits. Depois
+\texttt{meio\_comunicacao.transmitir} soma \texttt{random.gauss(media, sigma)}
+em cada amostra. O receptor demodula esse sinal ruidoso.
 
-\textbf{Por que hamming vem depois do edc?} Para proteger também os bits de
-verificação anexados ao payload.
+\textbf{2. Como foi feita a modulação?} Em banda-base, cada bit vira um
+conjunto de amostras em volts: NRZ usa \(+V\) e \(-V\), Manchester usa
+transição no meio do bit e Bipolar AMI alterna a polaridade dos bits 1. Na
+portadora, cada símbolo vira uma onda \(I\cos - Q\sin\); ASK muda
+amplitude, FSK muda frequência, QPSK usa 2 bits por símbolo e 16-QAM usa 4 bits
+por símbolo.
 
-\textbf{Por que hamming(8,4), e não hamming(7,4)?} O bit extra de paridade
+\textbf{3. O ruído entra antes ou depois da modulação?} Depois. A ordem é:
+bits \(\to\) modulação \(\to\) sinal limpo \(\to\) meio ruidoso \(\to\) sinal
+recebido \(\to\) demodulação.
+
+\textbf{4. Qual é o jeito certo de colocar o bit de paridade?} No código, a
+paridade é calculada sobre o bloco inteiro e anexada como um byte de EDC: sete
+zeros mais o bit de paridade. Ela não é colocada no final de cada byte original
+da mensagem.
+
+\textbf{5. Por que não usar zlib para crc?} Porque o enunciado proíbe
+bibliotecas prontas para os protocolos. O crc foi implementado bit a bit.
+
+\textbf{6. Por que usar paridade se CRC-32 é melhor?} Porque o trabalho pede
+comparar mecanismos. A paridade é simples e tem baixo custo, mas só detecta
+quantidade ímpar de erros. O CRC-32 detecta muito melhor, principalmente erros
+em rajada, mas insere 32 bits por bloco.
+
+\textbf{7. Por que hamming vem depois do edc?} Para proteger também os bits de
+verificação anexados ao payload. No receptor, o Hamming tenta corrigir antes de
+verificar o EDC.
+
+\textbf{8. Por que hamming(8,4), e não hamming(7,4)?} O bit extra de paridade
 geral permite detectar erro duplo e mantém alinhamento em bytes.
 
-\textbf{Por que 16-QAM é mais sensível a ruído?} Porque os pontos da
-constelação ficam mais próximos.
+\textbf{9. Expliquem o Hamming do projeto.} Cada 4 bits de dados viram 8 bits:
+três bits de paridade de Hamming, quatro bits de dados e um bit de paridade
+geral. No receptor, a síndrome aponta erro simples corrigível; a paridade geral
+permite diferenciar erro simples de erro duplo.
 
-\textbf{A interface web substitui a gtk?} Não. A interface principal é gtk; a
+\textbf{10. Quais são as vantagens e desvantagens de NRZ-Polar e 16-QAM?}
+NRZ-Polar é simples e robusto para simulação em banda-base, mas pode ter longas
+sequências sem transição e componente DC. 16-QAM carrega 4 bits por símbolo e é
+mais eficiente espectralmente, mas os pontos da constelação ficam próximos e a
+demodulação fica mais sensível ao ruído.
+
+\textbf{11. Por que 16-QAM é mais sensível a ruído?} Porque os pontos da
+constelação ficam mais próximos. Uma variação menor já pode empurrar o símbolo
+para a decisão errada.
+
+\textbf{12. O que significa ``não dá para ver o sinal que está chegando'' na
+portadora?} Dá para ver o sinal recebido como amostras ruidosas. O que não dá é
+olhar a onda e ler diretamente os bits como em um desenho ideal. Por isso o
+receptor estima \(I\) e \(Q\) por correlação e escolhe o ponto válido mais
+próximo da constelação.
+
+\textbf{13. O que acontece se o ruído aumentar muito?} O demodulador passa a
+errar bits. O Hamming pode corrigir erro simples por bloco, mas erros múltiplos
+podem ser apenas detectados ou até escapar dependendo do EDC.
+
+\textbf{14. Como funciona o enquadramento com flags?} No byte stuffing, o
+quadro começa e termina com \texttt{0x7E}; se \texttt{0x7E} ou \texttt{0x7D}
+aparecem nos dados, o transmissor insere \texttt{0x7D} antes. No bit stuffing,
+a flag é \texttt{01111110}; depois de cinco bits 1 seguidos no payload, o
+transmissor insere um 0.
+
+\textbf{15. Como vocês testaram?} \texttt{testes.py} cobre conversão
+texto/bits, os três enquadramentos, paridade, checksum, CRC, Hamming,
+modulações banda-base, modulações por portadora e simulação completa. O CRC
+também é conferido com o vetor clássico \texttt{123456789 -> 0xCBF43926}.
+
+\textbf{16. A interface web substitui a gtk?} Não. A interface principal é gtk; a
 web é opcional e chama a mesma função.
+
+\textbf{17. Como provar que o crc está correto?} Pelo vetor clássico
+\texttt{123456789}, que deve retornar \texttt{0xcbf43926}.
 
 \section{Checklist de domínio}
 
