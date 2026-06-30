@@ -1074,6 +1074,12 @@ if BACKEND == "gtk":
                 background: #ffffff;
                 border: 1px solid #dbe3ef;
                 border-radius: 10px;
+                padding: 8px;
+            }
+            .bits-text {
+                color: #0f172a;
+                font-family: "SF Mono", "Cascadia Mono", "Consolas", monospace;
+                font-size: 12px;
             }
             .bits-title {
                 color: #0f172a;
@@ -1481,19 +1487,27 @@ if BACKEND == "gtk":
             conteudo.pack_start(self.label(hint, "bits-hint", wrap=True),
                                 False, False, 0)
 
-            texto = Gtk.TextView()
-            texto.set_editable(False)
-            texto.set_cursor_visible(False)
-            texto.set_monospace(True)
-            texto.set_wrap_mode(Gtk.WrapMode.CHAR)
-            texto.get_style_context().add_class("bits-box")
-            texto.set_size_request(-1, 170 if chave != "fases_bits" else 260)
+            caixa_texto = Gtk.EventBox()
+            caixa_texto.get_style_context().add_class("bits-box")
+            caixa_texto.set_hexpand(True)
 
-            rolagem = Gtk.ScrolledWindow()
-            rolagem.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-            rolagem.set_shadow_type(Gtk.ShadowType.NONE)
-            rolagem.add(texto)
-            conteudo.pack_start(rolagem, True, True, 0)
+            texto = Gtk.Label(xalign=0, yalign=0)
+            texto.get_style_context().add_class("bits-text")
+            texto.set_halign(Gtk.Align.FILL)
+            texto.set_valign(Gtk.Align.START)
+            texto.set_hexpand(True)
+            texto.set_margin_top(8)
+            texto.set_margin_bottom(8)
+            texto.set_margin_start(8)
+            texto.set_margin_end(8)
+            texto.set_selectable(True)
+            texto.set_line_wrap(True)
+            texto.set_line_wrap_mode(Pango.WrapMode.CHAR)
+            texto.set_ellipsize(Pango.EllipsizeMode.NONE)
+            texto.set_width_chars(1)
+            texto.set_max_width_chars(120)
+            caixa_texto.add(texto)
+            conteudo.pack_start(caixa_texto, False, True, 0)
 
             self.textos_bits[chave] = texto
             return cartao
@@ -1547,7 +1561,7 @@ if BACKEND == "gtk":
                 for label in labels.values():
                     label.set_text("-")
             for texto in self.textos_bits.values():
-                texto.get_buffer().set_text("Clique em Transmitir uma vez.")
+                texto.set_text("Clique em Transmitir uma vez.")
             for grafico in self.graficos.values():
                 grafico.set_series([])
 
@@ -1635,7 +1649,7 @@ if BACKEND == "gtk":
                 "fases_bits": formatar_bits_por_fase(diagnostico),
             }
             for chave, texto in textos.items():
-                self.textos_bits[chave].get_buffer().set_text(texto)
+                self.textos_bits[chave].set_text(texto)
 
         def rolar_resultados_para_topo(self):
             if self.rolagem_resultados is None:
