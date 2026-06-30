@@ -217,6 +217,8 @@ def adicionar_checksum(bits):
     # transmite o complemento da soma; no receptor, payload + checksum deve
     # resultar em todos os bits 1.
     soma = soma_complemento1(bits_para_palavras16(bits))
+    # ~ inverte todos os bits da soma. como Python nao limita inteiros a 16 bits,
+    # & 0xFFFF recorta o resultado para manter apenas os ultimos 16 bits.
     checksum = (~soma) & 0xFFFF
 
     return bits + bytes_para_bits([checksum >> 8, checksum & 0xFF])
@@ -322,7 +324,7 @@ def codificar_hamming(bits):
         bloco = [p1, p2, d1, p4, d2, d3, d4]
         # p0 é a paridade geral do bloco. ela ajuda a separar erro simples
         # de erro duplo.
-        p0 = sum(bloco) % 2
+        p0 = sum(bloco) % 2 
         saida += bloco + [p0]
     return saida
 
