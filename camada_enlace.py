@@ -218,46 +218,89 @@ POLI_CRC32_REFLETIDO = 0xEDB88320
 
 def calcular_crc32(bits):
     """calcula crc-32 ieee 802 bit a bit."""
+    # crc é como uma divisão polinomial em base 2.
+    # aqui essa divisão não aparece como conta armada; ela vira deslocamento
+    # de bits e xor com o polinomio. xor é a "subtração" nessa matematica.
+    #
+    # começa em ffffffff pq esse é o valor inicial usado no crc-32 ieee.
+    # em binario isso é um registrador de 32 bits cheio de 1.
     crc = 0xFFFFFFFF
+
+    # anda pela mensagem de 8 em 8 bits, ou seja, byte por byte.
     for i in range(0, len(bits), 8):
         byte = bits[i:i + 8]
+
+        # reversed(byte) faz o byte ser processado do ultimo bit para o primeiro.
+        # por isso o algoritmo é refletido: ele trabalha lsb-first, começando
+        # pelo bit menos significativo do byte.
         for bit in reversed(byte):
+            # crc ^ bit faz xor entre o registrador e o bit que entrou.
+            # o & 1 pega só o ultimo bit da direita.
+            # se esse ultimo bit deu 1, quer dizer que precisa aplicar
+            # o polinomio na divisão.
             if (crc ^ bit) & 1:
+                # >> 1 desloca o registrador para a direita.
+                # depois o xor com o polinomio refletido faz a redução
+                # da divisão polinomial.
                 crc = (crc >> 1) ^ POLI_CRC32_REFLETIDO
             else:
+                # se não precisa reduzir pelo polinomio, só desloca.
+                # isso equivale a continuar a divisão sem "subtrair" nada.
                 crc >>= 1
+
+    # no padrão crc-32 ieee o valor final tambem é invertido.
+    # xor com ffffffff inverte todos os 32 bits.
     return crc ^ 0xFFFFFFFF
 
 
 def adicionar_crc32(bits):
     """anexa o crc-32 do payload como 4 bytes."""
+    # calcula o resto da divisão crc do payload.
     crc = calcular_crc32(bits)
+    # separa os 32 bits em 4 bytes e anexa no final do quadro.
+    # isso vira o campo de detecção de erro.
     return bits + bytes_para_bits([(crc >> 24) & 0xFF, (crc >> 16) & 0xFF,
                                     (crc >> 8) & 0xFF, crc & 0xFF])
 
 
 def verificar_crc32(bits):
     """recalcula o crc e compara com o campo recebido."""
+    # precisa ter 32 bits para existir um crc completo.
     if len(bits) < 32:
         return bits, False
+
+    # tudo antes dos ultimos 32 bits é o payload.
     payload = bits[:-32]
     recebido = 0
+
+    # remonta os ultimos 32 bits como um numero inteiro.
     for b in bits[-32:]:
         recebido = (recebido << 1) | b
+
+    # se o crc recalculado do payload for igual ao recebido, o quadro passou.
     return payload, calcular_crc32(payload) == recebido
 
 
 # correção de erros: hamming(8,4) estendido
 def codificar_hamming(bits):
     """codifica o payload em blocos hamming(8,4)."""
+    # hamming(8,4): cada grupo de 4 bits de dados vira 8 bits.
+    # os dados são d1 d2 d3 d4 e entram junto com paridades p1, p2, p4 e p0.
     saida = []
     for i in range(0, len(bits), 4):
         nibble = bits[i:i + 4]
         d1, d2, d3, d4 = nibble
+
+        # cada paridade cobre um conjunto diferente de posições.
+        # essas combinações são o que depois permitem calcular a sindrome.
         p1 = (d1 + d2 + d4) % 2
         p2 = (d1 + d3 + d4) % 2
         p4 = (d2 + d3 + d4) % 2
+
+        # posições do hamming: 1,2,4 são paridades; 3,5,6,7 são dados.
         bloco = [p1, p2, d1, p4, d2, d3, d4]
+        # p0 é a paridade geral do bloco. ela ajuda a separar erro simples
+        # de erro duplo.
         p0 = sum(bloco) % 2
         saida += bloco + [p0]
     return saida
@@ -265,21 +308,36 @@ def codificar_hamming(bits):
 
 def decodificar_hamming(bits):
     """decodifica hamming(8,4), corrigindo erro simples e detectando duplo."""
+    # lê de 8 em 8 bits. cada bloco deve ter vindo de 4 bits originais.
     dados, corrigidos, erro_duplo = [], 0, False
     for i in range(0, len(bits) - 7, 8):
         bloco = bits[i:i + 8][:]
+
+        # recalcula as paridades que deveriam bater.
+        # s1, s2 e s4 formam a sindrome, que aponta a posição do erro.
         s1 = (bloco[0] + bloco[2] + bloco[4] + bloco[6]) % 2
         s2 = (bloco[1] + bloco[2] + bloco[5] + bloco[6]) % 2
         s4 = (bloco[3] + bloco[4] + bloco[5] + bloco[6]) % 2
         sindrome = s4 * 4 + s2 * 2 + s1
+
+        # paridade geral diz se a quantidade total de erros parece impar.
         par_geral = sum(bloco) % 2
+
         if sindrome != 0 and par_geral == 1:
+            # erro simples em uma das 7 primeiras posições.
+            # a sindrome vira o indice, mas no python começa em zero,
+            # então usa sindrome - 1.
             bloco[sindrome - 1] ^= 1
             corrigidos += 1
         elif sindrome == 0 and par_geral == 1:
+            # erro simples no p0. os dados estão bons, só contabiliza correção.
             corrigidos += 1
         elif sindrome != 0 and par_geral == 0:
+            # sindrome acusa algo, mas paridade geral não bate com erro simples.
+            # isso indica erro duplo: detecta, mas não corrige.
             erro_duplo = True
+
+        # devolve só as posições de dados originais.
         dados += [bloco[2], bloco[4], bloco[5], bloco[6]]
     return dados, corrigidos, erro_duplo
 
@@ -319,6 +377,7 @@ def transmitir(bits, config):
         if config["correcao"] == "hamming":
             bloco = codificar_hamming(bloco)
         payloads.append(bloco)
+
     return ENQUADRAR[config["enquadramento"]](payloads)
 
 
