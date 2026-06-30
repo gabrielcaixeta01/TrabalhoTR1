@@ -695,24 +695,14 @@ if BACKEND == "gtk":
             fundo.add(raiz)
 
             painel_config = self.montar_painel_config()
-            painel_config.set_hexpand(True)
-
-            config_scroll = Gtk.ScrolledWindow()
-            config_scroll.get_style_context().add_class("results-scroll")
-            config_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-            config_scroll.set_min_content_width(340)
-            config_scroll.set_shadow_type(Gtk.ShadowType.NONE)
-            config_scroll.set_can_focus(False)
-            config_scroll.add(painel_config)
-            config_scroll.set_hexpand(False)
-            config_scroll.set_vexpand(True)
-            config_scroll.set_halign(Gtk.Align.START)
+            painel_config.set_vexpand(True)
+            painel_config.set_halign(Gtk.Align.START)
 
             painel_resultados = self.montar_painel_resultados()
             painel_resultados.set_hexpand(True)
             painel_resultados.set_vexpand(True)
 
-            raiz.attach(config_scroll, 0, 0, 1, 1)
+            raiz.attach(painel_config, 0, 0, 1, 1)
             raiz.attach(painel_resultados, 1, 0, 1, 1)
             self.inicializar_resultados()
 
@@ -1135,12 +1125,43 @@ if BACKEND == "gtk":
         # montagem da tela
 
         def montar_painel_config(self):
-            cartao, caixa = self.novo_card("sidebar")
-            cartao.set_size_request(320, -1)
-            caixa.set_size_request(292, -1)
+            # container externo com estilo de sidebar (hexpand=False impede que o
+            # hexpand dos filhos alargue a coluna do Grid e crie faixa branca central)
+            outer = Gtk.EventBox()
+            outer.get_style_context().add_class("sidebar")
+            outer.set_size_request(320, -1)
+            outer.set_hexpand(False)
+
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            outer.add(inner)
+
+            # área rolável com todos os campos de configuração
+            fields_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            fields_box.set_border_width(12)
+            fields_box.set_size_request(292, -1)
+
+            fields_scroll = Gtk.ScrolledWindow()
+            fields_scroll.get_style_context().add_class("results-scroll")
+            fields_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            fields_scroll.set_shadow_type(Gtk.ShadowType.NONE)
+            fields_scroll.set_can_focus(False)
+            fields_scroll.add(fields_box)
+            fields_scroll.set_vexpand(True)
+            fields_scroll.set_hexpand(False)
+            inner.pack_start(fields_scroll, True, True, 0)
+
+            def adicionar(rotulo_texto, widget):
+                grupo = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+                grupo.pack_start(self.label(rotulo_texto, "field-label"), False, False, 0)
+                grupo.pack_start(widget, False, True, 0)
+                fields_box.pack_start(grupo, False, True, 0)
+
+            def secao(texto):
+                rotulo = self.label(texto.upper(), "sidebar-section")
+                fields_box.pack_start(rotulo, False, False, 0)
 
             titulo = self.label("Simulador TR1", "title")
-            caixa.pack_start(titulo, False, False, 0)
+            fields_box.pack_start(titulo, False, False, 0)
             subtitulo = self.label(
                 "Transmissão completa: aplicação, enlace, física e meio ruidoso.",
                 "subtitle",
@@ -1148,17 +1169,7 @@ if BACKEND == "gtk":
             )
             subtitulo.set_width_chars(26)
             subtitulo.set_max_width_chars(30)
-            caixa.pack_start(subtitulo, False, False, 0)
-
-            def adicionar(rotulo_texto, widget):
-                grupo = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-                grupo.pack_start(self.label(rotulo_texto, "field-label"), False, False, 0)
-                grupo.pack_start(widget, False, True, 0)
-                caixa.pack_start(grupo, False, True, 0)
-
-            def secao(texto):
-                rotulo = self.label(texto.upper(), "sidebar-section")
-                caixa.pack_start(rotulo, False, False, 0)
+            fields_box.pack_start(subtitulo, False, False, 0)
 
             secao("Mensagem")
             self.entrada_texto = Gtk.Entry(text="Ola, TR1!")
@@ -1208,6 +1219,15 @@ if BACKEND == "gtk":
             self.spin_intervalo.set_size_request(260, 44)
             adicionar("Intervalo contínuo (ms)", self.spin_intervalo)
 
+            # separador visual antes do dock fixo
+            sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            inner.pack_start(sep, False, False, 0)
+
+            # dock fixo — botões e status nunca ficam dentro da área de scroll
+            dock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            dock.set_border_width(12)
+            inner.pack_start(dock, False, False, 0)
+
             botoes = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             self.botao_transmitir = Gtk.Button(label="Transmitir uma vez")
             self.botao_transmitir.get_style_context().add_class("primary")
@@ -1218,7 +1238,7 @@ if BACKEND == "gtk":
             self.botao_continuo.get_style_context().add_class("secondary")
             self.botao_continuo.connect("toggled", self.ao_alternar_continua)
             botoes.pack_start(self.botao_continuo, True, True, 0)
-            caixa.pack_start(botoes, False, True, 4)
+            dock.pack_start(botoes, False, True, 0)
 
             self.lbl_modo = Gtk.Label(label="Modo manual", xalign=0)
             modo_box = Gtk.EventBox()
@@ -1227,13 +1247,13 @@ if BACKEND == "gtk":
             modo_inner.set_border_width(8)
             modo_inner.pack_start(self.lbl_modo, False, False, 0)
             modo_box.add(modo_inner)
-            caixa.pack_start(modo_box, False, True, 0)
+            dock.pack_start(modo_box, False, True, 0)
 
             self.lbl_status = Gtk.Label(label="", xalign=0)
             self.lbl_status.set_line_wrap(True)
             self.lbl_status.set_max_width_chars(34)
             modo_inner.pack_start(self.lbl_status, False, False, 0)
-            return cartao
+            return outer
 
         def novo_combo(self, opcoes, indice_padrao):
             combo = Gtk.ComboBoxText()
@@ -1278,13 +1298,22 @@ if BACKEND == "gtk":
             seletor.set_halign(Gtk.Align.START)
             caixa.pack_start(seletor, False, False, 0)
 
+            def _em_scroll(widget):
+                sc = Gtk.ScrolledWindow()
+                sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+                sc.set_shadow_type(Gtk.ShadowType.NONE)
+                sc.set_hexpand(True)
+                sc.set_vexpand(True)
+                sc.add(widget)
+                return sc
+
             self.stack_resultados.add_titled(
-                self.montar_tabela_diagnostico(), "processamento",
+                _em_scroll(self.montar_tabela_diagnostico()), "processamento",
                 "Processamento")
             self.stack_resultados.add_titled(
-                self.montar_pagina_bits(), "bits", "Bits e quadros")
+                _em_scroll(self.montar_pagina_bits()), "bits", "Bits e quadros")
             self.stack_resultados.add_titled(
-                self.montar_pagina_graficos(), "graficos", "Gráficos")
+                _em_scroll(self.montar_pagina_graficos()), "graficos", "Gráficos")
 
             caixa.pack_start(self.stack_resultados, True, True, 0)
             return caixa
@@ -1310,8 +1339,8 @@ if BACKEND == "gtk":
                 valor.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
                 conteudo.pack_start(valor, False, False, 0)
                 self.metricas[chave] = valor
-                coluna = indice % 2
-                linha = indice // 2
+                coluna = indice % 3
+                linha = indice // 3
                 grade.attach(cartao, coluna, linha, 1, 1)
             return grade
 
