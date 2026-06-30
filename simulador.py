@@ -15,7 +15,7 @@ import meio_comunicacao
 
 
 CONFIG_PADRAO = {
-    "texto": "O hexa vem",
+    "texto": "O Hexa vem!",
     "tam_max_quadro": 8,        # bytes de dados da aplicação por quadro
     "enquadramento": "bits",    # contagem | bytes | bits
     "deteccao": "crc",          # nenhum | paridade | checksum | crc

@@ -1178,7 +1178,7 @@ if BACKEND == "gtk":
             fields_box.pack_start(subtitulo, False, False, 0)
 
             secao("Mensagem")
-            self.entrada_texto = Gtk.Entry(text="Ola, TR1!")
+            self.entrada_texto = Gtk.Entry(text="O Hexa vem!")
             self.entrada_texto.set_width_chars(20)
             self.entrada_texto.set_hexpand(True)
             self.entrada_texto.set_placeholder_text("Digite a mensagem a transmitir")
@@ -1890,7 +1890,7 @@ else:
                                           highlightthickness=1,
                                           highlightbackground=COR_BORDA,
                                           highlightcolor=COR_LINHA)
-            self.entrada_texto.insert(0, "Ola, TR1!")
+            self.entrada_texto.insert(0, "O Hexa vem!")
             adicionar("Texto de entrada:", self.entrada_texto)
 
             self.spin_quadro = tk.Entry(frame, width=7, bg=COR_CAMPO,

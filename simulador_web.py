@@ -871,7 +871,7 @@ HTML = r"""<!doctype html>
       <div class="controls-scroll">
       <div class="section-label">Mensagem</div>
       <label for="texto">Texto de entrada</label>
-      <textarea id="texto" spellcheck="false">Ola, TR1!</textarea>
+      <textarea id="texto" spellcheck="false">O Hexa vem!</textarea>
 
       <div class="section-label">Camada de enlace</div>
       <label for="tam_max_quadro">Tamanho máximo do quadro</label>
