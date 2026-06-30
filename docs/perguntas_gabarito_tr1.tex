@@ -1,0 +1,235 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\geometry{margin=2.2cm}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  backgroundcolor=\color{gray!6}
+}
+
+\title{Perguntas e Gabarito de Defesa \\ Simulador TR1}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section*{Perguntas}
+
+\begin{enumerate}
+  \item No simulador, por que a paridade e calculada sobre o quadro inteiro, e nao separadamente no final de cada byte?
+
+  \item Quando a deteccao escolhida e paridade, por que o codigo adiciona 8 bits ao quadro, se a paridade conceitualmente precisa de apenas 1 bit?
+
+  \item Qual e a diferenca pratica entre paridade, checksum e CRC-32 em termos de custo no quadro e capacidade de detectar erro?
+
+  \item Por que o CRC-32 e mais forte que a paridade para detectar erros em rajada?
+
+  \item No checksum, por que a verificacao correta espera que a soma do payload com o checksum recebido resulte em \texttt{0xFFFF}?
+
+  \item Qual problema o enquadramento por contagem resolve e qual e a sua fragilidade principal?
+
+  \item No enquadramento por bytes, por que o transmissor precisa escapar \texttt{FLAG} e \texttt{ESC} quando eles aparecem dentro do payload?
+
+  \item No enquadramento por bits, por que o transmissor insere um zero depois de cinco bits 1 consecutivos?
+
+  \item Qual e a diferenca entre deteccao de erro e correcao de erro no trabalho?
+
+  \item No Hamming(8,4), por que 4 bits de dados viram 8 bits transmitidos?
+
+  \item No receptor, por que o codigo decodifica Hamming antes de verificar o EDC?
+
+  \item No fluxo completo do simulador, onde o ruido entra: dentro da camada fisica ou no meio de comunicacao?
+
+  \item Qual e a diferenca entre modulacao banda-base e modulacao por portadora no codigo?
+
+  \item Como o ASK representa os bits no codigo e qual e sua principal fragilidade?
+
+  \item Como o FSK representa os bits no codigo e por que ele compara energia em duas frequencias na demodulacao?
+
+  \item Por que QPSK transmite mais informacao por simbolo que ASK e FSK?
+
+  \item Por que 16-QAM transmite mais informacao por simbolo que QPSK, mas tende a ser mais sensivel a ruido?
+
+  \item O que significa dizer que QPSK e 16-QAM usam uma constelacao I/Q?
+
+  \item Para que serve a funcao de correlacao na demodulacao das modulacoes por portadora?
+
+  \item Por que o codigo usa tabelas/dicionarios de funcoes para escolher enquadramento, EDC e modulacao?
+\end{enumerate}
+
+\newpage
+
+\section*{Gabarito}
+
+\begin{enumerate}
+  \item A paridade e um campo de deteccao do quadro. O transmissor pega todos os bits do payload daquele quadro, conta quantos bits 1 existem e adiciona uma paridade para o bloco inteiro. Isso evita tratar cada byte isoladamente e segue a ideia da camada de enlace: proteger o quadro transmitido.
+
+  \begin{lstlisting}[language=Python]
+def adicionar_paridade_par(bits):
+    paridade = sum(bits) % 2
+    return bits + [0] * 7 + [paridade]
+  \end{lstlisting}
+
+  \item Porque o simulador organiza o tamanho dos campos de deteccao em bytes. Conceitualmente, a paridade e so 1 bit; no codigo, ela e armazenada no ultimo bit de um byte de EDC. Os outros 7 bits ficam zerados.
+
+  \begin{lstlisting}[language=Python]
+TAMANHO_EDC = {"nenhum": 0, "paridade": 1, "checksum": 2, "crc": 4}
+return bits + [0] * 7 + [paridade]
+  \end{lstlisting}
+
+  \item A paridade e a mais barata e simples: no simulador adiciona 1 byte por quadro, mas so 1 bit carrega a paridade. O checksum adiciona 2 bytes e detecta mais casos do que a paridade. O CRC-32 adiciona 4 bytes e e mais robusto, principalmente contra erros em rajada. Portanto, a troca e entre overhead de banda e forca da deteccao.
+
+  \item Porque o CRC-32 trata a mensagem como um polinomio binario e calcula um resto de divisao usando XOR e deslocamentos. Isso faz com que muitos padroes de erro alterem o resto calculado. A paridade so percebe se a quantidade de bits alterados foi impar; se dois bits mudarem, por exemplo, ela pode nao detectar.
+
+  \begin{lstlisting}[language=Python]
+if (crc ^ bit) & 1:
+    crc = (crc >> 1) ^ POLI_CRC32_REFLETIDO
+else:
+    crc >>= 1
+  \end{lstlisting}
+
+  \item No checksum de complemento de 1, o transmissor envia o complemento da soma. No receptor, soma-se payload mais checksum. Se nada foi alterado de forma detectavel, o resultado fecha em todos os bits 1, isto e, \texttt{0xFFFF}.
+
+  \begin{lstlisting}[language=Python]
+checksum = (~soma) & 0xFFFF
+total = soma_complemento1(
+    bits_para_palavras16(payload) + bits_para_palavras16(bits[-16:])
+)
+return payload, total == 0xFFFF
+  \end{lstlisting}
+
+  \item O enquadramento por contagem resolve a separacao dos quadros colocando, no inicio de cada quadro, um byte informando quantos bytes o payload possui. A fragilidade e que, se esse byte de tamanho for corrompido, o receptor pode passar a cortar o fluxo no lugar errado.
+
+  \begin{lstlisting}[language=Python]
+n_bytes = len(payload) // 8
+fluxo += bytes_para_bits([n_bytes])
+fluxo += payload
+  \end{lstlisting}
+
+  \item Porque \texttt{FLAG} marca inicio e fim de quadro, e \texttt{ESC} marca que o proximo byte foi protegido. Se esses valores aparecerem no payload sem escape, o receptor pode confundir dado com controle. O escape permite dizer: este byte parece controle, mas aqui ele e dado.
+
+  \begin{lstlisting}[language=Python]
+if byte in (FLAG_BYTE, ESC_BYTE):
+    quadro.append(ESC_BYTE)
+quadro.append(byte)
+  \end{lstlisting}
+
+  \item Porque a flag em bits e \texttt{01111110}. Se o payload tiver muitos bits 1 consecutivos, ele pode formar uma sequencia parecida com a flag. Ao inserir um zero depois de cinco bits 1, o transmissor garante que a flag nao apareca acidentalmente dentro do payload.
+
+  \begin{lstlisting}[language=Python]
+if uns == 5:
+    trem.append(0)
+    uns = 0
+  \end{lstlisting}
+
+  \item Deteccao de erro apenas informa se ha indicio de erro; correcao tenta recuperar automaticamente o dado. Paridade, checksum e CRC sao mecanismos de deteccao. Hamming e mecanismo de correcao para erro simples e tambem detecta erro duplo.
+
+  \item Porque o Hamming(8,4) pega 4 bits de dados e adiciona bits de paridade em posicoes especificas. No codigo, os dados sao \texttt{d1}, \texttt{d2}, \texttt{d3}, \texttt{d4}; as paridades sao \texttt{p1}, \texttt{p2}, \texttt{p4} e \texttt{p0}. Assim, cada bloco de 4 bits vira um bloco de 8 bits.
+
+  \begin{lstlisting}[language=Python]
+bloco = [p1, p2, d1, p4, d2, d3, d4]
+p0 = sum(bloco) % 2
+saida += bloco + [p0]
+  \end{lstlisting}
+
+  \item Porque o transmissor adiciona EDC antes de aplicar Hamming. Logo, no receptor, o inverso correto e primeiro remover/corrigir Hamming e depois verificar o EDC. Assim, o Hamming pode corrigir erro tanto no payload quanto no campo de deteccao.
+
+  \begin{lstlisting}[language=Python]
+bloco = ADICIONAR_EDC[config["deteccao"]](bloco)
+if config["correcao"] == "hamming":
+    bloco = codificar_hamming(bloco)
+
+if config["correcao"] == "hamming":
+    payload, info["corrigidos"], info["erro_duplo"] = decodificar_hamming(payload)
+payload, info["edc_ok"] = VERIFICAR_EDC[config["deteccao"]](payload)
+  \end{lstlisting}
+
+  \item O ruido entra no meio de comunicacao, nao dentro da camada fisica. A camada fisica gera o sinal modulado e depois demodula o sinal recebido. O meio simula a imperfeicao do canal, somando ruido gaussiano as amostras do sinal.
+
+  \begin{lstlisting}[language=Python]
+ruido = random.gauss(media, sigma)
+saida.append(amostra + ruido)
+  \end{lstlisting}
+
+  \item Na banda-base, os bits viram diretamente niveis ou transicoes de tensao, como NRZ-Polar, Manchester e Bipolar. Na portadora, os bits escolhem propriedades de uma senoide, como amplitude, frequencia, fase ou ponto I/Q.
+
+  \item No ASK, bit 1 transmite uma portadora com amplitude; bit 0 transmite amplitude zero. A fragilidade e que ruido ou atenuacao podem alterar a amplitude e confundir presenca de onda com ausencia de onda.
+
+  \begin{lstlisting}[language=Python]
+if bit == 1:
+    sinal += onda(V, 0.0, CICLOS_PORTADORA)
+else:
+    sinal += onda(0.0, 0.0, CICLOS_PORTADORA)
+  \end{lstlisting}
+
+  \item No FSK, bit 0 e bit 1 usam frequencias diferentes. Na demodulacao, o receptor mede quanto o simbolo recebido parece com a frequencia do 0 e quanto parece com a frequencia do 1. A maior energia indica o bit mais provavel.
+
+  \begin{lstlisting}[language=Python]
+f0, f1 = CICLOS_FSK
+e0 = math.hypot(*correlacionar(simbolo, f0))
+e1 = math.hypot(*correlacionar(simbolo, f1))
+  \end{lstlisting}
+
+  \item Porque QPSK agrupa bits de 2 em 2. Cada par escolhe um dos quatro pontos da constelacao. ASK e FSK, no codigo, enviam 1 bit por simbolo; QPSK envia 2 bits por simbolo, aumentando a eficiencia.
+
+  \begin{lstlisting}[language=Python]
+MAPA_QPSK = {
+    (0, 0): (A_QPSK, A_QPSK),
+    (0, 1): (-A_QPSK, A_QPSK),
+    (1, 1): (-A_QPSK, -A_QPSK),
+    (1, 0): (A_QPSK, -A_QPSK),
+}
+  \end{lstlisting}
+
+  \item Porque 16-QAM agrupa bits de 4 em 4, escolhendo 2 bits para o eixo I e 2 bits para o eixo Q. Como existem 4 niveis em cada eixo, ha 16 pontos possiveis. A desvantagem e que os pontos ficam mais proximos; com ruido, o ponto recebido pode cair mais perto do vizinho errado.
+
+  \begin{lstlisting}[language=Python]
+i = NIVEIS_GRAY[(bits[k], bits[k + 1])] * ESCALA_QAM
+q = NIVEIS_GRAY[(bits[k + 2], bits[k + 3])] * ESCALA_QAM
+  \end{lstlisting}
+
+  \item Significa que cada simbolo e representado por duas componentes: I, em fase com o cosseno, e Q, em quadratura com o seno. No codigo, a onda e gerada por uma combinacao dessas duas componentes.
+
+  \begin{lstlisting}[language=Python]
+amostras.append(i * math.cos(angulo) - q * math.sin(angulo))
+  \end{lstlisting}
+
+  \item A correlacao serve para estimar, no receptor, quais componentes I e Q estavam presentes no simbolo recebido. O codigo multiplica o sinal pelas referencias de cosseno e seno; se o simbolo estiver alinhado com uma referencia, a soma cresce. Depois, o receptor decide o ponto ou frequencia mais provavel.
+
+  \begin{lstlisting}[language=Python]
+soma_cos += amostra * math.cos(angulo)
+soma_sen += amostra * math.sin(angulo)
+i = 2 / N * soma_cos
+q = -2 / N * soma_sen
+  \end{lstlisting}
+
+  \item Porque as tabelas deixam a escolha configuravel sem uma cadeia grande de \texttt{if/elif}. A configuracao guarda strings como \texttt{"crc"}, \texttt{"bits"} ou \texttt{"qpsk"}, e o dicionario converte essa escolha na funcao correta.
+
+  \begin{lstlisting}[language=Python]
+ADICIONAR_EDC = {
+    "nenhum": lambda b: b,
+    "paridade": adicionar_paridade_par,
+    "checksum": adicionar_checksum,
+    "crc": adicionar_crc32,
+}
+
+bloco = ADICIONAR_EDC[config["deteccao"]](bloco)
+  \end{lstlisting}
+\end{enumerate}
+
+\end{document}

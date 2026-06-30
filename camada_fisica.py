@@ -135,6 +135,8 @@ def correlacionar(simbolo, ciclos):
     # correlação é tipo perguntar: "quanto desse simbolo parece com cos?"
     # e tambem "quanto parece com sen?". isso recupera as coordenadas i e q
     # que foram usadas na transmissão.
+    # esse e um receptor coerente simplificado: ele conhece a mesma portadora
+    # usada no transmissor e usa essa referencia para medir o simbolo recebido.
     N = len(simbolo)
     soma_cos = 0.0
     soma_sen = 0.0
@@ -166,6 +168,7 @@ def bits_do_ponto_mais_proximo(i, q, constelacao):
     """escolhe os bits do ponto mais próximo na constelação."""
     # depois de estimar i e q no receptor, compara esse ponto com todos os
     # pontos ideais da constelação. o mais perto é a decisão do simbolo.
+    # isso troca uma amostra ruidosa por um dos simbolos validos do protocolo.
     melhor_bits = None
     menor_dist = None
     for bits_simbolo, (i_ref, q_ref) in constelacao.items():
@@ -228,6 +231,8 @@ def demodular_fsk(sinal):
     N = AMOSTRAS_POR_SIMBOLO
     for k in range(0, len(sinal) - N + 1, N):
         simbolo = sinal[k:k + N]
+        # correlacionar devolve (i, q); hypot transforma essas componentes
+        # em uma unica medida de energia/amplitude para cada frequencia.
         e0 = math.hypot(*correlacionar(simbolo, f0))
         e1 = math.hypot(*correlacionar(simbolo, f1))
         if e1 > e0:
@@ -290,6 +295,8 @@ def decidir_nivel_gray(valor):
     """escolhe o nível gray mais próximo de um eixo da constelação."""
     # para 16-qam a decisão pode ser feita por eixo.
     # pega o valor estimado e escolhe entre -3, -1, 1 e 3 qual ficou mais perto.
+    # a decisao e separada por eixo porque a grade qam combina um nivel de i
+    # com um nivel de q, cada um codificando dois bits.
     melhor_nivel = None
     menor_dist = None
     for nivel in (-3, -1, 1, 3):

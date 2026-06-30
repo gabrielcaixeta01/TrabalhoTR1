@@ -82,18 +82,24 @@ def desenquadrar_bytes(bits):
     """remove flags e escapes usando uma pequena máquina de estados."""
     payloads = []
     bytes_fluxo = bits_para_bytes(bits)
+    # dentro: ja encontrou flag de abertura; escapado: byte anterior era ESC.
+    # atual guarda os bytes do quadro que ainda nao chegou na flag final.
     dentro, escapado, atual = False, False, []
     for byte in bytes_fluxo:
         if not dentro:
             if byte == FLAG_BYTE:
+                # ignora qualquer lixo antes da primeira flag e abre um quadro novo.
                 dentro, atual = True, []
             continue
         if escapado:
+            # depois de ESC, o byte entra literal, mesmo que seja FLAG ou outro ESC.
             atual.append(byte)
             escapado = False
         elif byte == ESC_BYTE:
+            # marca que o proximo byte foi protegido por escape.
             escapado = True
         elif byte == FLAG_BYTE:
+            # flag dentro de um quadro fecha o quadro atual.
             if atual:
                 payloads.append(bytes_para_bits(atual))
             dentro = False
@@ -110,12 +116,15 @@ def enquadrar_bits(payloads):
         for bit in payload:
             trem.append(bit)
 
+            # conta a sequencia de bits 1; cinco 1 seguidos poderiam encostar
+            # no padrao da flag 01111110.
             if bit == 1:
                 uns += 1
             else:
                 uns = 0
 
             if uns == 5:
+                # este zero nao faz parte do payload: ele quebra a sequencia.
                 trem.append(0)
                 uns = 0
 
@@ -129,20 +138,25 @@ def desenquadrar_bits(bits):
     i = 0
     n = len(bits)
     while i + 8 <= n:
+        # procura uma flag de abertura deslocando bit a bit.
         if bits[i:i + 8] != FLAG_BITS:
             i += 1
             continue
         j = i + 8
 
+        # a proxima flag delimita o fim do quadro atual.
         while j + 8 <= n and bits[j:j + 8] != FLAG_BITS:
             j += 1
         if j + 8 > n:
             break
 
+        # percorre o trecho entre flags e desfaz o stuffing.
         payload, uns, k = [], 0, i + 8
         while k < j:
             bit = bits[k]
             if uns == 5:
+                # espera-se que este seja o zero inserido pelo transmissor.
+                # ele e descartado e a contagem de 1 volta para zero.
                 uns = 0
 
             else:
@@ -180,11 +194,14 @@ def soma_complemento1(palavras):
     soma = 0
     for palavra in palavras:
         soma += palavra
+        # se passou de 16 bits, o carry volta para o bit menos significativo.
+        # essa dobra e a marca da soma em complemento de 1.
         soma = (soma & 0xFFFF) + (soma >> 16)
     return soma
 
 
 def bits_para_palavras16(bits):
+    # checksum trabalha em palavras de 16 bits; zeros finais so completam o bloco.
     bits = bits + [0] * ((-len(bits)) % 16)
     palavras = []
     for i in range(0, len(bits), 16):
@@ -197,6 +214,8 @@ def bits_para_palavras16(bits):
 
 
 def adicionar_checksum(bits):
+    # transmite o complemento da soma; no receptor, payload + checksum deve
+    # resultar em todos os bits 1.
     soma = soma_complemento1(bits_para_palavras16(bits))
     checksum = (~soma) & 0xFFFF
 
@@ -207,6 +226,8 @@ def verificar_checksum(bits):
     if len(bits) < 16:
         return bits, False
     payload = bits[:-16]
+    # quando nao houve erro detectavel, a soma do payload com o checksum
+    # recebido fecha em 0xffff.
     total = soma_complemento1(bits_para_palavras16(payload) + bits_para_palavras16(bits[-16:]))
     return payload, total == 0xFFFF
 
@@ -361,8 +382,10 @@ VERIFICAR_EDC = {"nenhum": lambda b: (b, True),
 
 def transmitir(bits, config):
     """aplica edc, hamming e enquadramento no transmissor."""
+    # tam_bits e o tamanho maximo de dados de aplicacao antes de edc/hamming.
     tam_bits = config["tam_max_quadro"] * 8
 
+    # no enquadramento por contagem, o tamanho final precisa caber em 1 byte.
     tam_quadro_final = config["tam_max_quadro"] + TAMANHO_EDC[config["deteccao"]]
     if config["correcao"] == "hamming":
         tam_quadro_final *= 2
@@ -373,6 +396,8 @@ def transmitir(bits, config):
     payloads = []
     for i in range(0, len(bits), tam_bits):
         bloco = bits[i:i + tam_bits]
+        # EDC entra antes do Hamming para que a correcao tambem proteja
+        # os bits de deteccao de erro.
         bloco = ADICIONAR_EDC[config["deteccao"]](bloco)
         if config["correcao"] == "hamming":
             bloco = codificar_hamming(bloco)
@@ -383,12 +408,15 @@ def transmitir(bits, config):
 
 def receber(bits, config):
     """faz o caminho inverso no receptor e retorna bits + relatório."""
+    # primeiro remove o enquadramento; cada payload ainda pode conter hamming e EDC.
     payloads = DESENQUADRAR[config["enquadramento"]](bits)
     bits_app, relatorio = [], []
     for n, payload in enumerate(payloads):
         info = {"quadro": n + 1, "corrigidos": 0,
                 "erro_duplo": False, "edc_ok": True}
         if config["correcao"] == "hamming":
+            # hamming vem antes da checagem de EDC porque pode corrigir bits
+            # que fazem parte tanto do payload quanto do campo de deteccao.
             payload, info["corrigidos"], info["erro_duplo"] = \
                 decodificar_hamming(payload)
         payload, info["edc_ok"] = \
