@@ -50,5 +50,4 @@ código é o de uma graduação em Engenharia de Computação: correto e explic�
 
 - Esqueleto, `testes.py`, estudos e `DECISOES.md` estão alinhados com os slides e entre si.
 - No esqueleto, `testes.py` mostra 2 FAIL (mapas 8PSK e 32-QAM vazios) e o resto TODO, até o grupo implementar.
-- Único ponto a conferir: a convenção do Manchester (os dois resumos se contradizem; o slide 8 do
-  `CF-10` decide). Esqueleto, estudos e código de referência usam 1 = alto→baixo.
+- Sem pendências: a convenção do Manchester foi confirmada no slide 8 do `CF-10` (1 = alto→baixo).

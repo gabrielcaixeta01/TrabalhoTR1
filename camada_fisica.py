@@ -82,10 +82,9 @@ def modular_manchester(bits):
     CONVENÇÃO (slide 8 do CF-10 - Canal banda base): dado XOR clock.
         bit 0 -> -V na 1ª metade, +V na 2ª  (transição BAIXO -> ALTO)
         bit 1 -> +V na 1ª metade, -V na 2ª  (transição ALTO -> BAIXO)
-    ATENÇÃO - CONFLITO NOS RESUMOS: o primeiro resumo (docs/referencias/referencia-slides.md)
-    afirma o inverso (1 = baixo->alto, "IEEE 802.3"). Confiram o slide 8 do
-    CF-10 e fixem UMA convenção, a mesma no modulador, no demodulador e nos
-    testes (trocar é inverter as duas metades).
+    (Confirmado no slide 8 do CF-10: bit 1 sobe a 1ª metade e desce a 2ª.
+    Atenção: a convenção de G.E. Thomas/Tanenbaum é essa; a IEEE 802.3 é a
+    inversa. Modulador, demodulador e testes devem usar a mesma.)
 
     COMO FAZER
         metade = AMOSTRAS_POR_BIT // 2. Para cada bit, acrescente `metade`

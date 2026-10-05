@@ -108,8 +108,8 @@ Fonte: `CF - 10 - Canal banda base.pdf`, slides 3, 4, 6 a 9 e 11.
 - **Manchester (slide 8):** transição **alto→baixo para o bit 1** e **baixo→alto para o bit 0** (XOR entre
   dados e clock).
 
-  > ⚠️ **Conflito:** o primeiro resumo (`docs/referencias/referencia-slides.md`) diz o contrário (1 = baixo→alto, "IEEE
-  > 802.3"). Conferir o slide 8 do `CF - 10` com os próprios olhos e fixar uma convenção.
+  > Confirmado olhando o slide: bit 1 = Dado XOR Clock = alto na 1ª metade e baixo na 2ª. O primeiro resumo
+  > (`docs/referencias/referencia-slides.md`) diz o contrário e está errado nesse ponto.
 - **Bipolar/AMI (slide 9):** bit 0 = 0 V; os bits 1 alternam entre +V e −V.
 - **NRZI (slide 7):** bit 1 causa transição; bit 0 mantém o nível.
 - **NRZ Polar:** +V para 1 e −V para 0. **NRZ Unipolar:** +V para 1 e 0 V para 0.

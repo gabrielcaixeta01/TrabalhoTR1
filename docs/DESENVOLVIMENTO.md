@@ -92,9 +92,6 @@ tratamento de quadro com EDC inválido...). Todos já foram decididos e justific
 [DECISOES.md](DECISOES.md), que também é o insumo da seção "decisões tomadas" do relatório. Leiam o arquivo
 antes de implementar e, se o grupo quiser mudar algo, atualizem-no junto com o código.
 
-Único ponto a conferir: a **convenção do Manchester** (os dois resumos dos slides se contradizem). O
-`DECISOES.md` explica como trocar.
-
 ---
 
 ## Todos precisam dominar tudo

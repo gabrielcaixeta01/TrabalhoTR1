@@ -300,7 +300,7 @@ Os parâmetros globais (`V`, `AMOSTRAS_POR_BIT`...) são os do esqueleto.
 
 ### Banda-base: NRZ-Polar, Manchester (IEEE 802.3) e Bipolar (AMI)
 
-Manchester segue o slide 8 do `CF - 10` (dado XOR clock): bit 1 = alto→baixo, bit 0 = baixo→alto. **Conferir no slide:** o primeiro resumo diz o contrário (ver `referencia-slides-detalhes.md`).
+Manchester segue o slide 8 do `CF - 10` (dado XOR clock): bit 1 = alto→baixo, bit 0 = baixo→alto. Convenção confirmada no slide (a IEEE 802.3 é a inversa; o resumo geral dos slides a cita por engano).
 
 ```python
 # ------------------------------ banda-base --------------------------------

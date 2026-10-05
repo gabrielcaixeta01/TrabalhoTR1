@@ -28,7 +28,7 @@ A transmissão em banda base não utiliza portadora e mapeia a sequência binár
   * `0` $\rightarrow$ **Sem transição** (mantém o nível anterior).
   * **Uso**: Facilita a recuperação de clock em sequências de `1`s.
 
-* **Manchester (IEEE 802.3)**:
+* **Manchester (IEEE 802.3)** *(CORREÇÃO: a convenção deste item está invertida; pelo slide 8 do CF-10 o bit 1 desce, alto→baixo, e o bit 0 sobe. Ver `referencia-slides-detalhes.md`.)*:
   * Operação: $S(t) = \text{Data}(t) \oplus \text{Clock}(t)$
   * Transição garantida no centro do bit:
     * `1` $\rightarrow$ Transição de Baixo ($-V$) para Alto ($+V$).

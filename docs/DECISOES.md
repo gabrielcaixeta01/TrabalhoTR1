@@ -13,7 +13,7 @@ slides não dizem, a escolha é nossa.
 | Tema | Decisão | Fonte | Por quê |
 |---|---|---|---|
 | NRZ-Polar | 1 = +V, 0 = −V, durante todo o bit | slides (CF-10) | — |
-| Manchester | bit 1 = alto→baixo, bit 0 = baixo→alto (dado XOR clock) | slides (CF-10, slide 8) | O primeiro resumo traz a convenção inversa; adotamos a do slide citado. **Conferir o slide 8 do CF-10 e, se for o inverso, trocar as duas metades do bit no modulador e no demodulador.** |
+| Manchester | bit 1 = alto→baixo, bit 0 = baixo→alto (dado XOR clock) | slides (CF-10, slide 8) | Confirmado no slide 8: 1 = Dado XOR Clock → alto na 1ª metade e baixo na 2ª. Atenção: é a convenção de Thomas/Tanenbaum; a IEEE 802.3 é a inversa, e o resumo geral dos slides a cita por engano. |
 | Bipolar | AMI: 0 = 0 V, cada 1 alterna entre +V e −V | slides (CF-10, slide 9) | RZ Bipolar é outra técnica, não pedida |
 | Decisão banda-base | média das amostras de cada bit (Manchester: comparação das duas metades) | projeto | Os slides amostram no centro do bit; a média usa as 100 amostras e filtra melhor o ruído gaussiano |
 | Resolução | 100 amostras por bit e por símbolo | projeto | Suficiente para gráficos legíveis e correlação estável |
