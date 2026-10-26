@@ -25,7 +25,7 @@ para gerar o ruído.
 | Física (portadora) | ASK, FSK, **8PSK**, **32-QAM** |
 | Enlace — enquadramento | contagem de caracteres, **entrelaçamento de bits**, byte stuffing, bit stuffing |
 | Enlace — detecção | bit de paridade par, checksum, CRC-32 (IEEE 802) |
-| Enlace — correção | código de Hamming (11,7) |
+| Enlace — correção | código de Hamming (m + r, m), com m configurável (7 = (11,7) dos slides) |
 | Aplicação | chat: texto → bits (Tx) e bits → texto (Rx) |
 | Interface | GUI em GTK com configuração geral e saídas de Tx e Rx |
 
@@ -96,6 +96,7 @@ Configuração da simulação (`simulador.CONFIG_PADRAO`):
 | `enquadramento` | `contagem` · `entrelacamento` · `bytes` · `bits` |
 | `deteccao` | `nenhum` · `paridade` · `checksum` · `crc` |
 | `correcao` | `nenhum` · `hamming` |
+| `bits_hamming` | bits de dados por bloco do Hamming (padrão 7 = (11,7)) |
 | `mod_digital` | `nrz` · `manchester` · `bipolar` |
 | `mod_portadora` | `nenhuma` · `ask` · `fsk` · `8psk` · `32qam` |
 | `ruido_media`, `ruido_sigma` | Volts |

@@ -2,7 +2,8 @@
 
 > Material de estudo (prova + revisão do projeto TR1).
 > Base: slides `TR1_09` (38-39), que usam o **Hamming (11,7)**, e enunciado (seção 1.3).
-> Mapeado no código: `camada_enlace.py`, seção "[3/3] CORREÇÃO DE ERROS - HAMMING".
+> No projeto o Hamming é **generalizado**: o número de bits de dados por bloco (m) é configurável e o (11,7) é o caso m = 7.
+> Mapeado no código: `camada_enlace.py`, seção "3) Correção de erros: Hamming".
 
 ---
 
@@ -12,7 +13,8 @@ As técnicas do arquivo 03 só **detectam** erro — descobrem *que* algo mudou,
 retransmissão. O **Hamming** vai além: ele **corrige** o erro no próprio receptor (FEC — *Forward
 Error Correction*), descobrindo *qual* bit virou e invertendo de volta. Não precisa retransmitir.
 
-O preço: **mais redundância**. No Hamming (11,7) do projeto, 7 bits de dados viram 11 (overhead de 4/7 ≈ 57%).
+O preço: **mais redundância**. No Hamming (11,7), 7 bits de dados viram 11 (overhead de 4/7 ≈ 57%). Com blocos maiores o
+overhead cai: no (31,26) são 5 bits de paridade para 26 de dados (≈ 19%).
 
 ---
 
@@ -65,27 +67,50 @@ Os slides **não** mostram bit de paridade geral (SECDED). Logo:
 - com **2 erros** no mesmo bloco, a síndrome aponta uma posição errada e o decodificador "corrige" o bit
   errado, **sem perceber**. Só dá para suspeitar quando `S > 11` (posição inexistente, 12 a 15).
 
+### Generalização: Hamming (m + r, m)
+
+O (11,7) é só um caso. Para **m** bits de dados, precisamos de **r** bits de paridade tais que a síndrome (r bits)
+consiga apontar qualquer das `n = m + r` posições, ou "nenhum erro":
+
+```
+2^r ≥ m + r + 1      (menor r que satisfaz)
+```
+
+| m (dados) | r (paridade) | Código (n, m) |
+|---|---|---|
+| 4 | 3 | (7, 4) |
+| 7 | 4 | (11, 7) — o dos slides |
+| 11 | 4 | (15, 11) |
+| 26 | 5 | (31, 26) |
+| 57 | 6 | (63, 57) |
+
+A regra de posições é a mesma: paridades nas potências de 2 (1, 2, 4, 8, 16, ...), dados nas demais, e a paridade
+p cobre toda posição que tem o bit p ligado no binário. O que muda é só o tamanho do bloco. No projeto, m vem da
+GUI (`bits_hamming`, padrão 7).
+
 ---
 
 ## 3. No projeto — codificação
 
-O payload (já alinhado em bytes e com o EDC anexado) é processado em blocos de **7 bits de dados**. Para cada
-bloco: coloca-se cada dado na sua posição (3, 5, 6, 7, 9, 10, 11), calcula-se cada paridade como o XOR das
-posições que ela cobre e monta-se o bloco de 11 bits.
+O payload (já alinhado em bytes e com o EDC anexado) é processado em blocos de **m bits de dados**. Para cada
+bloco: coloca-se cada dado na sua posição de dados, calcula-se cada paridade como o XOR das posições que ela
+cobre e monta-se o bloco de `m + r` bits.
 
 **Problema de alinhamento (decisão do grupo):** os slides não dizem o que fazer quando o número de bits não é
-múltiplo de 7, nem como encaixar blocos de 11 bits em quadros de bytes (a contagem e o byte stuffing
-trabalham em bytes). A solução do código de referência: completar o último bloco de dados com zeros até 7 e
-completar a saída com zeros até um múltiplo de 8.
+múltiplo de m, nem como encaixar blocos de `m + r` bits em quadros de bytes (a contagem e o byte stuffing
+trabalham em bytes). A solução: anexar um **bit 1 de fim** aos dados e completar com zeros até múltiplo de m,
+e depois completar a saída com zeros até múltiplo de 8. O bit 1 de fim marca onde os dados terminam; assim o
+receptor sabe quanto enchimento tirar para **qualquer** m (cortar só "até múltiplo de 8" não funcionaria com m
+grande, porque o enchimento pode passar de 8 bits).
 
 ## 4. No projeto — decodificação
 
-Para cada bloco de 11 bits: calcula-se a síndrome, inverte-se o bit apontado quando `0 < S ≤ 11`, conta-se a
-correção e extraem-se os 7 bits de dados. Trabalhe sobre uma **cópia** do bloco para não alterar a entrada.
-No fim descartam-se os bits de enchimento (a quantidade de dados volta a ser múltiplo de 8).
+Para cada bloco completo de `m + r` bits: calcula-se a síndrome, inverte-se o bit apontado quando `0 < S ≤ n`,
+conta-se a correção e extraem-se os m bits de dados. Trabalhe sobre uma **cópia** do bloco para não alterar a
+entrada. No fim descartam-se o enchimento: os zeros do final e o bit 1 de fim.
 
-**O que o teste deve provar:** injetando 1 erro em **cada uma das 11 posições** de um bloco, o decodificador
-recupera os dados originais em todas.
+**O que o teste deve provar:** injetando 1 erro em **cada posição** de um bloco, o decodificador recupera os
+dados originais em todas (vale para qualquer m, não só 7).
 
 ---
 
@@ -153,60 +178,86 @@ invertida. Depois inverta duas posições e veja que o decodificador "corrige" o
 4. Régua: **detectar `t` → d ≥ t+1**; **corrigir `t` → d ≥ 2t+1**; (11,7) tem d=3, estendido d=4.
 5. Diferença **FEC (Hamming)** × retransmissão (ARQ, baseada em detecção).
 6. **Ordem EDC → Hamming** no TX e o motivo (Hamming protege o EDC; EDC pega o que o Hamming não corrige).
-7. Custo da correção: 7 bits viram 11 (≈ 57% de overhead), mais o enchimento para fechar em bytes.
+7. Custo da correção: no (11,7), 7 bits viram 11 (≈ 57% de overhead); blocos maiores gastam menos paridade, mas um
+   erro duplo no mesmo bloco fica mais provável. Mais o enchimento para fechar em bytes.
+8. Por que o Hamming do projeto **não é fixo**: m é configurável e r sai de `2^r ≥ m + r + 1`.
 
 ---
 
 ## 9. Código de referência — `camada_enlace.py` (Hamming)
 
-> Código **testado** (ida e volta, com e sem ruído, e a simulação completa), no mesmo formato das
-> assinaturas do esqueleto: dá para copiar para o arquivo indicado. Leiam e entendam cada linha antes de
-> colar; o professor pergunta.
+> Código **testado** (ida e volta, 1 erro em cada posição para vários m, e a simulação completa), no mesmo
+> formato das assinaturas do esqueleto: dá para copiar para o arquivo indicado. Leiam e entendam cada linha
+> antes de colar; o professor pergunta.
 
-Implementa o **Hamming(11,7)** do resumo dos slides (7 bits de dados, 4 de paridade em 1, 2, 4 e 8). Diferente do (8,4) estendido discutido nas seções anteriores, ele **corrige 1 erro por bloco mas não detecta erro duplo**: uma síndrome acima de 11 aponta uma posição inexistente e é sinalizada como incorrigível. Como 11 bits não fecham em bytes, a saída é completada com zeros até um múltiplo de 8 e o decodificador descarta o excedente.
-
-### Hamming(11,7)
+Hamming (m + r, m) com m configurável (padrão 7, que é o (11,7) dos slides). Corrige 1 erro por bloco mas não
+detecta erro duplo: uma síndrome acima de n aponta uma posição inexistente e é sinalizada como incorrigível.
 
 ```python
-# ------------------------------ Hamming (11,7) -----------------------------
-POSICOES_DADOS = [3, 5, 6, 7, 9, 10, 11]          # as demais (1, 2, 4, 8) são paridades
-COBERTURA = {1: [3, 5, 7, 9, 11], 2: [3, 6, 7, 10, 11],
-             4: [5, 6, 7], 8: [9, 10, 11]}
+# ------------------------------- Hamming (m + r, m) ------------------------
+BITS_HAMMING_PADRAO = 7
 
 
-def codificar_hamming(bits):
-    """Blocos de 7 bits de dados viram 11 bits; saída completada para múltiplo de 8."""
-    bits = bits + [0] * ((-len(bits)) % 7)
+def bits_de_paridade(m):
+    """Menor r tal que 2^r >= m + r + 1."""
+    r = 1
+    while 2 ** r < m + r + 1:
+        r += 1
+    return r
+
+
+def posicoes_hamming(m):
+    """Devolve (n, posicoes_paridade, posicoes_dados) de um bloco com m bits de dados."""
+    r = bits_de_paridade(m)
+    n = m + r
+    posicoes_paridade = [2 ** k for k in range(r)]          # 1, 2, 4, 8, ...
+    posicoes_dados = [p for p in range(1, n + 1) if p not in posicoes_paridade]
+    return n, posicoes_paridade, posicoes_dados
+
+
+def codificar_hamming(bits, m=BITS_HAMMING_PADRAO):
+    """Blocos de m bits de dados viram m + r; saída completada para múltiplo de 8."""
+    n, posicoes_paridade, posicoes_dados = posicoes_hamming(m)
+    bits = bits + [1]                                       # bit 1 de fim
+    bits = bits + [0] * (-len(bits) % m)
     saida = []
-    for i in range(0, len(bits), 7):
-        bloco = [0] * 12                          # índices 1..11 (0 não é usado)
-        for pos, dado in zip(POSICOES_DADOS, bits[i:i + 7]):
+    for inicio in range(0, len(bits), m):
+        bloco = [0] * (n + 1)                               # posições 1 a n
+        for pos, dado in zip(posicoes_dados, bits[inicio:inicio + m]):
             bloco[pos] = dado
-        for p, cobertos in COBERTURA.items():
-            for pos in cobertos:
-                bloco[p] ^= bloco[pos]            # paridade par do grupo
+        for p in posicoes_paridade:
+            for pos in range(1, n + 1):
+                if pos & p and pos != p:                    # posições cobertas por p
+                    bloco[p] ^= bloco[pos]
         saida += bloco[1:]
-    return saida + [0] * ((-len(saida)) % 8)
+    return saida + [0] * (-len(saida) % 8)
 
 
-def decodificar_hamming(bits):
+def decodificar_hamming(bits, m=BITS_HAMMING_PADRAO):
     """Corrige 1 erro por bloco. Devolve (dados, n_corrigidos, erro_incorrigivel)."""
-    dados, corrigidos, incorrigivel = [], 0, False
-    for i in range(0, len(bits) // 11 * 11, 11):
-        bloco = [0] + bits[i:i + 11]
+    n, posicoes_paridade, posicoes_dados = posicoes_hamming(m)
+    dados = []
+    n_corrigidos = 0
+    erro_incorrigivel = False
+    for inicio in range(0, len(bits) // n * n, n):          # só blocos completos
+        bloco = [0] + bits[inicio:inicio + n]
         sindrome = 0
-        for p, cobertos in COBERTURA.items():
-            s = bloco[p]
-            for pos in cobertos:
-                s ^= bloco[pos]
-            if s:
-                sindrome += p                     # s8 s4 s2 s1 em binário
-        if 0 < sindrome <= 11:
-            bloco[sindrome] ^= 1                  # a síndrome é a posição errada
-            corrigidos += 1
-        elif sindrome > 11:
-            incorrigivel = True                   # aponta posição inexistente
-        dados += [bloco[pos] for pos in POSICOES_DADOS]
-    return dados[:len(dados) // 8 * 8], corrigidos, incorrigivel
+        for p in posicoes_paridade:
+            soma = 0
+            for pos in range(1, n + 1):
+                if pos & p:                                 # inclui a própria paridade
+                    soma ^= bloco[pos]
+            if soma:
+                sindrome += p                               # síndrome em binário
+        if 0 < sindrome <= n:
+            bloco[sindrome] ^= 1                            # a síndrome é a posição do erro
+            n_corrigidos += 1
+        elif sindrome > n:
+            erro_incorrigivel = True                        # aponta posição inexistente
+        dados += [bloco[pos] for pos in posicoes_dados]
+    while dados and dados[-1] == 0:                         # tira o enchimento...
+        dados.pop()
+    if dados:
+        dados.pop()                                         # ...e o 1 de fim
+    return dados, n_corrigidos, erro_incorrigivel
 ```
-

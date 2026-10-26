@@ -63,7 +63,7 @@ Todos os desenquadradores precisam **ignorar o padding de zeros** que 8PSK/32-QA
 
 | # | O que fazer | Onde | Estudo |
 |---|---|---|---|
-| 19 | Hamming (11,7) dos slides, com síndrome: `codificar_hamming`, `decodificar_hamming` (completar com zeros até múltiplo de 7 e de 8) | `camada_enlace.py` | 04 |
+| 19 | Hamming com síndrome e m configurável (padrão 7 = (11,7) dos slides): `bits_de_paridade`, `posicoes_hamming`, `codificar_hamming`, `decodificar_hamming` (bit 1 de fim, zeros até múltiplo de m e de 8) | `camada_enlace.py` | 04 |
 | 20 | Pipeline do enlace: `transmitir` (divide → EDC → Hamming → enquadra) e `receber` (ordem inversa, com relatório por quadro) | `camada_enlace.py` | 02, 03, 04, 05 |
 
 ## Etapa 7 — Integração

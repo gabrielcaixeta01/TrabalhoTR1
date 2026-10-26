@@ -160,7 +160,7 @@ potências. É a forma mais rápida de achar em qual camada a mensagem se corrom
 1. **Aplicação**: convenção texto↔bits (UTF-8, MSB primeiro).
 2. **Enlace – enquadramento** (arquivo 02): 4 técnicas, vantagens/limitações.
 3. **Enlace – detecção** (arquivo 03): paridade < checksum < CRC, e por quê.
-4. **Enlace – correção** (arquivo 04): Hamming (11,7), síndrome, régua de distância.
+4. **Enlace – correção** (arquivo 04): Hamming (m + r, m) com (11,7) como caso dos slides, síndrome, régua de distância.
 5. **Física – banda-base**: NRZ-Polar, Manchester e Bipolar.
 6. **Física – portadora** (arquivo 01): I/Q, ASK/FSK/PSK/QAM, Gray, trade-offs.
 7. **Meio**: AWGN, SNR, ruído por amostra.
@@ -240,7 +240,7 @@ def transmitir(bits, config):
     if config["enquadramento"] in ("contagem", "entrelacamento"):
         n_bits = tam_bits + 8 * TAMANHO_EDC[config["deteccao"]]
         if config["correcao"] == "hamming":
-            n_bits = len(codificar_hamming([0] * n_bits))
+            n_bits = len(codificar_hamming([0] * n_bits, config["bits_hamming"]))
         extra = 2 if config["enquadramento"] == "entrelacamento" else 1
         if n_bits // 8 + extra > 255:     # + cabeçalho (+ linha de paridade)
             raise ValueError("Quadro final excede 255 bytes: reduza o "
@@ -249,7 +249,7 @@ def transmitir(bits, config):
     for i in range(0, len(bits), tam_bits):
         bloco = ADICIONAR_EDC[config["deteccao"]](bits[i:i + tam_bits])
         if config["correcao"] == "hamming":
-            bloco = codificar_hamming(bloco)
+            bloco = codificar_hamming(bloco, config["bits_hamming"])
         payloads.append(bloco)
     return ENQUADRAR[config["enquadramento"]](payloads)
 
@@ -262,7 +262,7 @@ def receber(bits, config):
         info = {"quadro": n + 1, "corrigidos": 0, "erro_duplo": False, "edc_ok": True}
         if config["correcao"] == "hamming":
             payload, info["corrigidos"], info["erro_duplo"] = \
-                decodificar_hamming(payload)
+                decodificar_hamming(payload, config["bits_hamming"])
         payload, info["edc_ok"] = VERIFICAR_EDC[config["deteccao"]](payload)
         bits_app += payload
         relatorio.append(info)
@@ -281,6 +281,7 @@ CONFIG_PADRAO = {
     "enquadramento": "bits",
     "deteccao": "crc",
     "correcao": "hamming",
+    "bits_hamming": 7,
     "mod_digital": "nrz",
     "mod_portadora": "8psk",
     "ruido_media": 0.0,

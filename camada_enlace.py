@@ -16,9 +16,10 @@ Receptor (receber): o caminho inverso (desenquadra, corrige, verifica o EDC).
 Decisões de projeto (justificadas em docs/DECISOES.md):
   - Todo EDC ocupa bytes inteiros, porque contagem e byte stuffing trabalham
     com bytes: paridade 1 byte, checksum 2 bytes, CRC-32 4 bytes.
-  - O Hamming é o (11,7): 7 bits de dados viram 11. Como 11 não fecha em
-    bytes, completamos os dados com zeros até múltiplo de 7 e a saída até
-    múltiplo de 8; o decodificador descarta esse enchimento.
+  - O Hamming tem m bits de dados por bloco (configurável; 7 é o (11,7) dos
+    slides) e r bits de paridade calculados a partir de m. Os dados levam um
+    bit 1 de fim e zeros até múltiplo de m, e a saída é completada com zeros
+    até múltiplo de 8; o decodificador descarta esse enchimento.
   - FLAG = 0x7E e ESC = 0x7D, como no HDLC/PPP.
 """
 
@@ -393,75 +394,105 @@ def verificar_crc32(bits):
 
 
 # ===========================================================================
-# 3) Correção de erros: Hamming (11,7)   (slides TR1_09, 38-39)
+# 3) Correção de erros: Hamming (m + r, m)
 #
-# 7 bits de dados + 4 de paridade = 11 bits por bloco:
+# Cada bloco tem m bits de dados e r bits de paridade. O r é o menor valor que
+# satisfaz 2^r >= m + r + 1 (assim a síndrome consegue apontar qualquer
+# posição do bloco). Os slides usam m = 7, que dá r = 4 e o código (11,7);
+# aqui m é configurável (BITS_HAMMING_PADRAO é 7).
+#
+# Posições de 1 a n = m + r. As potências de 2 (1, 2, 4, 8, ...) guardam
+# paridade; as demais guardam os dados. Ex. (11,7):
 #     posição:  1   2   3   4   5   6   7   8   9   10   11
 #     conteúdo: P1  P2  D3  P4  D5  D6  D7  P8  D9  D10  D11
-# As posições que são potência de 2 (1, 2, 4, 8) guardam paridade; as outras
-# guardam os dados. Cada paridade cobre as posições listadas em COBERTURA.
+# A paridade na posição p (par) cobre toda posição que tem o bit p ligado no
+# binário: P1 cobre as ímpares (3, 5, 7, ...), P2 cobre 2, 3, 6, 7, 10, 11...
 #
 # Decodificação: recalcula-se cada paridade incluindo o próprio bit de
-# paridade recebido. Os resultados formam a síndrome (s8 s4 s2 s1):
+# paridade recebido. Os resultados formam a síndrome (s8 s4 s2 s1 ...):
 #   síndrome 0 -> sem erro;  síndrome > 0 -> é a posição do bit errado, é só inverter.
 # Não há paridade geral, então erro duplo não é detectado (só se a síndrome
-# passar de 11, uma posição que não existe).
+# apontar uma posição que não existe, maior que n).
 # ===========================================================================
-POSICOES_DADOS = [3, 5, 6, 7, 9, 10, 11]
-COBERTURA = {1: [3, 5, 7, 9, 11],
-             2: [3, 6, 7, 10, 11],
-             4: [5, 6, 7],
-             8: [9, 10, 11]}
+BITS_HAMMING_PADRAO = 7
 
 
-def codificar_hamming(bits):
-    """Codifica o payload em blocos Hamming (11,7).
+def bits_de_paridade(m):
+    """Menor r tal que 2^r >= m + r + 1: bits de paridade para m bits de dados."""
+    r = 1
+    while 2 ** r < m + r + 1:
+        r += 1
+    return r
 
-    Completa os dados com zeros até múltiplo de 7, monta cada bloco de 11 bits
-    (dados nas posições de dados, paridade nas de paridade) e completa a saída
-    com zeros até múltiplo de 8, para o enquadramento trabalhar em bytes.
+
+def posicoes_hamming(m):
+    """Devolve (n, posicoes_paridade, posicoes_dados) de um bloco com m bits de dados."""
+    r = bits_de_paridade(m)
+    n = m + r
+    posicoes_paridade = [2 ** k for k in range(r)]          # 1, 2, 4, 8, ...
+    posicoes_dados = [p for p in range(1, n + 1) if p not in posicoes_paridade]
+    return n, posicoes_paridade, posicoes_dados
+
+
+def codificar_hamming(bits, m=BITS_HAMMING_PADRAO):
+    """Codifica o payload em blocos Hamming de m bits de dados.
+
+    Anexa um bit 1 de fim e completa com zeros até múltiplo de m (o receptor
+    usa esse 1 para saber onde os dados terminam, qualquer que seja m). Monta
+    cada bloco com os dados e as paridades e completa a saída com zeros até
+    múltiplo de 8, para o enquadramento trabalhar em bytes.
     """
-    bits = bits + [0] * (-len(bits) % 7)
+    n, posicoes_paridade, posicoes_dados = posicoes_hamming(m)
+    bits = bits + [1]
+    bits = bits + [0] * (-len(bits) % m)
     saida = []
-    for inicio in range(0, len(bits), 7):
-        bloco = [0] * 12                    # posições 1 a 11 (o índice 0 não é usado)
-        for pos, dado in zip(POSICOES_DADOS, bits[inicio:inicio + 7]):
+    for inicio in range(0, len(bits), m):
+        bloco = [0] * (n + 1)               # posições 1 a n (o índice 0 não é usado)
+        for pos, dado in zip(posicoes_dados, bits[inicio:inicio + m]):
             bloco[pos] = dado
-        for pos_paridade, cobertas in COBERTURA.items():
-            for pos in cobertas:
-                bloco[pos_paridade] ^= bloco[pos]   # paridade par do grupo
+        for p in posicoes_paridade:
+            for pos in range(1, n + 1):
+                if pos & p and pos != p:    # posições cobertas pela paridade p
+                    bloco[p] ^= bloco[pos]
         saida += bloco[1:]
     return saida + [0] * (-len(saida) % 8)
 
 
-def decodificar_hamming(bits):
-    """Decodifica os blocos de 11 bits, corrigindo até 1 erro por bloco.
+def decodificar_hamming(bits, m=BITS_HAMMING_PADRAO):
+    """Decodifica os blocos, corrigindo até 1 erro por bloco.
 
     Devolve (dados, n_corrigidos, erro_incorrigivel):
       - dados: bits de dados recuperados, sem o enchimento do final;
       - n_corrigidos: quantos bits foram corrigidos no total;
-      - erro_incorrigivel: True se alguma síndrome apontou posição > 11.
+      - erro_incorrigivel: True se alguma síndrome apontou posição maior que n.
     """
+    n, posicoes_paridade, posicoes_dados = posicoes_hamming(m)
     dados = []
     n_corrigidos = 0
     erro_incorrigivel = False
-    for inicio in range(0, len(bits) // 11 * 11, 11):   # só blocos completos
-        bloco = [0] + bits[inicio:inicio + 11]
+    for inicio in range(0, len(bits) // n * n, n):      # só blocos completos
+        bloco = [0] + bits[inicio:inicio + n]
         sindrome = 0
-        for pos_paridade, cobertas in COBERTURA.items():
-            erro_no_grupo = bloco[pos_paridade]
-            for pos in cobertas:
-                erro_no_grupo ^= bloco[pos]
-            if erro_no_grupo:
-                sindrome += pos_paridade    # monta s8 s4 s2 s1 em binário
-        if 0 < sindrome <= 11:
+        for p in posicoes_paridade:
+            soma = 0
+            for pos in range(1, n + 1):
+                if pos & p:                 # posições cobertas, incluindo a própria paridade
+                    soma ^= bloco[pos]
+            if soma:
+                sindrome += p               # monta a síndrome em binário
+        if 0 < sindrome <= n:
             bloco[sindrome] ^= 1            # a síndrome é a posição do erro
             n_corrigidos += 1
-        elif sindrome > 11:
+        elif sindrome > n:
             erro_incorrigivel = True
-        dados += [bloco[pos] for pos in POSICOES_DADOS]
-    # Corta o enchimento: os dados originais são sempre bytes inteiros
-    return dados[:len(dados) // 8 * 8], n_corrigidos, erro_incorrigivel
+        dados += [bloco[pos] for pos in posicoes_dados]
+
+    # Tira o enchimento: os zeros do final e o 1 de fim que o codificador anexou
+    while dados and dados[-1] == 0:
+        dados.pop()
+    if dados:
+        dados.pop()
+    return dados, n_corrigidos, erro_incorrigivel
 
 
 # ===========================================================================
@@ -497,8 +528,10 @@ def validar_tamanho_quadro(config):
         return
     tamanho = config["tam_max_quadro"] + TAMANHO_EDC[config["deteccao"]]
     if config["correcao"] == "hamming":
-        blocos = -(-tamanho * 8 // 7)           # divisão para cima
-        tamanho = -(-blocos * 11 // 8)
+        m = config.get("bits_hamming", BITS_HAMMING_PADRAO)
+        n = m + bits_de_paridade(m)
+        blocos = -(-(tamanho * 8 + 1) // m)     # divisão para cima (+1 = bit de fim)
+        tamanho = -(-blocos * n // 8)
     tamanho += 1                                # byte de contagem
     if config["enquadramento"] == "entrelacamento":
         tamanho += N_COLUNAS_ENTRELACAMENTO // 8    # linha de paridade
@@ -522,7 +555,7 @@ def transmitir(bits, config):
         bloco = bits[inicio:inicio + tamanho_bloco]
         bloco = ADICIONAR_EDC[config["deteccao"]](bloco)
         if config["correcao"] == "hamming":
-            bloco = codificar_hamming(bloco)
+            bloco = codificar_hamming(bloco, config.get("bits_hamming", BITS_HAMMING_PADRAO))
         payloads.append(bloco)
     return ENQUADRAR[config["enquadramento"]](payloads)
 
@@ -548,7 +581,8 @@ def receber(bits, config):
         corrigidos = 0
         erro_duplo = False
         if config["correcao"] == "hamming":
-            payload, corrigidos, erro_duplo = decodificar_hamming(payload)
+            m = config.get("bits_hamming", BITS_HAMMING_PADRAO)
+            payload, corrigidos, erro_duplo = decodificar_hamming(payload, m)
         payload, edc_ok = VERIFICAR_EDC[config["deteccao"]](payload)
         bits_aplicacao += payload
         relatorio.append({"quadro": numero, "corrigidos": corrigidos,

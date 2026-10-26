@@ -33,6 +33,7 @@ CONFIG_PADRAO = {
     "enquadramento": "bits",    # contagem | entrelacamento | bytes | bits
     "deteccao": "crc",          # nenhum | paridade | checksum | crc
     "correcao": "hamming",      # nenhum | hamming
+    "bits_hamming": 7,          # bits de dados por bloco do Hamming (7 = (11,7))
     "mod_digital": "nrz",       # nrz | manchester | bipolar
     "mod_portadora": "8psk",    # nenhuma | ask | fsk | 8psk | 32qam
     "ruido_media": 0.0,         # média (x) do ruído gaussiano, em Volts

@@ -84,6 +84,8 @@ class JanelaSimulador(Gtk.Window):
         self.combo_enq = self.novo_combo(OPCOES_ENQUADRAMENTO, padrao["enquadramento"])
         self.combo_det = self.novo_combo(OPCOES_DETECCAO, padrao["deteccao"])
         self.combo_cor = self.novo_combo(OPCOES_CORRECAO, padrao["correcao"])
+        self.spin_hamming = Gtk.SpinButton.new_with_range(1, 64, 1)
+        self.spin_hamming.set_value(padrao["bits_hamming"])
         self.combo_dig = self.novo_combo(OPCOES_MOD_DIGITAL, padrao["mod_digital"])
         self.combo_port = self.novo_combo(OPCOES_MOD_PORTADORA, padrao["mod_portadora"])
         self.spin_media = Gtk.SpinButton.new_with_range(-2.0, 2.0, 0.01)
@@ -98,6 +100,7 @@ class JanelaSimulador(Gtk.Window):
                   ("Enquadramento:", self.combo_enq),
                   ("Detecção de erros:", self.combo_det),
                   ("Correção de erros:", self.combo_cor),
+                  ("Hamming: bits de dados por bloco:", self.spin_hamming),
                   ("Modulação digital:", self.combo_dig),
                   ("Modulação por portadora:", self.combo_port),
                   ("Ruído - média x (V):", self.spin_media),
@@ -149,6 +152,7 @@ class JanelaSimulador(Gtk.Window):
             "enquadramento": self.combo_enq.get_active_id(),
             "deteccao": self.combo_det.get_active_id(),
             "correcao": self.combo_cor.get_active_id(),
+            "bits_hamming": int(self.spin_hamming.get_value()),
             "mod_digital": self.combo_dig.get_active_id(),
             "mod_portadora": self.combo_port.get_active_id(),
             "ruido_media": self.spin_media.get_value(),
