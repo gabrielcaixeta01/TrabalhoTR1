@@ -1,410 +1,315 @@
 # -*- coding: utf-8 -*-
 """
-CAMADA FÍSICA
-=============
-Converte bits em SINAIS ELÉTRICOS (listas de amostras em Volts) e vice-versa.
-O enunciado (seção 1.2) pede duas etapas, como na Figura 1 do PDF:
+Camada física.
 
-  [1/2] MODULAÇÃO DIGITAL (banda-base):  NRZ-Polar, Manchester e Bipolar
-  [2/2] MODULAÇÃO POR PORTADORA:         ASK, FSK, 8PSK e 32-QAM
+bits -> sinais elétricos (listas de amostras em Volts) e o contrário.
+Duas etapas:
+  - banda-base: NRZ-Polar, Manchester e Bipolar
+  - portadora:  ASK, FSK, 8PSK e 32-QAM
 
-Convenções do projeto:
-  - Sinal = list[float] de amostras em VOLTS.
-  - Na banda-base, cada bit ocupa AMOSTRAS_POR_BIT amostras.
-  - Na portadora, cada símbolo ocupa AMOSTRAS_POR_SIMBOLO amostras. Um símbolo
-    carrega 1 bit (ASK, FSK), 3 bits (8PSK) ou 5 bits (32-QAM).
-  - Todo modulador tem um demodulador correspondente que desfaz a operação.
+Na banda-base cada bit ocupa AMOSTRAS_POR_BIT amostras. Na portadora cada
+símbolo ocupa AMOSTRAS_POR_SIMBOLO amostras e carrega 1 bit (ASK, FSK),
+3 bits (8PSK) ou 5 bits (32-QAM). Todo modulador tem um demodulador que desfaz
+a operação.
 
-COMO O RECEPTOR DECIDE (importante para o relatório e para a defesa oral):
-  O canal soma ruído gaussiano às amostras. O demodulador não pode olhar uma
-  amostra isolada; ele usa estratégias que "promediam" o ruído:
-    - Banda-base: MÉDIA das amostras de cada bit.
-    - Portadora : CORRELAÇÃO com cos/sen de referência (detecção coerente),
-      que recupera o ponto (I, Q) do símbolo, seguida de decisão pelo ponto
-      da constelação MAIS PRÓXIMO (mínima distância).
-Slides de apoio (Moodle): tópico "Modulação" (banda-base e portadora).
-Material de estudo: estudos/01-camada-fisica-portadora.md.
+Como o receptor decide, já que o canal soma ruído em cada amostra:
+  - banda-base: usa a média das amostras de cada bit (o ruído tem média ~0);
+  - portadora: correlaciona com cos/sen de referência para recuperar o ponto
+    (I, Q) do símbolo e escolhe o ponto da constelação mais próximo.
 """
 
 import math
 
-# ---------------------------------------------------------------------------
-# Parâmetros globais do simulador (em um só lugar para facilitar ajustes)
-# ---------------------------------------------------------------------------
-V = 1.0                      # amplitude de referência do sinal, em Volts
+V = 1.0                      # amplitude de referência, em Volts
 AMOSTRAS_POR_BIT = 100       # resolução do sinal banda-base
 AMOSTRAS_POR_SIMBOLO = 100   # resolução de cada símbolo da portadora
-CICLOS_PORTADORA = 4         # ciclos de portadora por símbolo (nº INTEIRO!)
-CICLOS_FSK = (2, 4)          # FSK: f0 (bit 0) e f1 (bit 1), em ciclos/símbolo
-                             # Frequências inteiras e distintas mantêm as
-                             # portadoras ORTOGONAIS dentro do símbolo, o que
-                             # é essencial para a demodulação por correlação.
+CICLOS_PORTADORA = 4         # ciclos de portadora por símbolo (inteiro)
+CICLOS_FSK = (2, 4)          # FSK: ciclos/símbolo para o bit 0 e para o bit 1
 
 
-# ===========================================================================
-# 1) MODULAÇÃO DIGITAL (BANDA-BASE)
-#    Cada bit vira AMOSTRAS_POR_BIT amostras de tensão.
-# ===========================================================================
+# banda base
 def modular_nrz_polar(bits):
-    """NRZ-Polar (Non-Return to Zero Polar).
-
-    REGRA
-        bit 1 -> +V durante todo o tempo de bit
-        bit 0 -> -V durante todo o tempo de bit
-        ("Polar" = dois níveis de polaridades opostas; "NRZ" = o sinal nunca
-        volta a zero no meio do bit.)
-
-    COMO FAZER
-        Para cada bit, acrescente AMOSTRAS_POR_BIT amostras do nível certo.
-        Dica: sinal += [nivel] * AMOSTRAS_POR_BIT
-    """
-    # TODO: implementar conforme a regra acima.
-    raise NotImplementedError("camada_fisica.modular_nrz_polar")
+    """NRZ-Polar: bit 1 -> +V e bit 0 -> -V durante todo o tempo do bit."""
+    sinal = []
+    for bit in bits:
+        nivel = V if bit == 1 else -V
+        sinal += [nivel] * AMOSTRAS_POR_BIT
+    return sinal
 
 
 def demodular_nrz_polar(sinal):
-    """Decodificador NRZ-Polar: sinal ruidoso -> bits.
+    """Decide cada bit pela média da janela: acima de 0 V é 1, senão 0.
 
-    COMO FAZER
-        1. Percorra o sinal em passos de AMOSTRAS_POR_BIT amostras
-           (range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT)).
-        2. Calcule a MÉDIA das amostras da janela. O ruído tem média ~0, então
-           a média recupera o nível transmitido mesmo com ruído forte.
-        3. Decisão com limiar em 0 V:  média > 0 -> bit 1;  senão bit 0.
+    A média diminui o efeito do ruído, que tem média perto de zero.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.demodular_nrz_polar")
+    bits = []
+    for inicio in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
+        janela = sinal[inicio:inicio + AMOSTRAS_POR_BIT]
+        media = sum(janela) / AMOSTRAS_POR_BIT
+        bits.append(1 if media > 0 else 0)
+    return bits
 
 
 def modular_manchester(bits):
-    """Manchester: sempre há transição no MEIO do bit (autossincronização).
+    """Manchester: sempre há uma transição no meio do bit.
 
-    CONVENÇÃO (slide 8 do CF-10 - Canal banda base): dado XOR clock.
-        bit 0 -> -V na 1ª metade, +V na 2ª  (transição BAIXO -> ALTO)
-        bit 1 -> +V na 1ª metade, -V na 2ª  (transição ALTO -> BAIXO)
-    (Confirmado no slide 8 do CF-10: bit 1 sobe a 1ª metade e desce a 2ª.
-    Atenção: a convenção de G.E. Thomas/Tanenbaum é essa; a IEEE 802.3 é a
-    inversa. Modulador, demodulador e testes devem usar a mesma.)
-
-    COMO FAZER
-        metade = AMOSTRAS_POR_BIT // 2. Para cada bit, acrescente `metade`
-        amostras de um nível e (AMOSTRAS_POR_BIT - metade) do outro. (O
-        "- metade" evita perder uma amostra se alguém mudar para um nº ímpar.)
+    Convenção do slide 8 do CF-10 (dado XOR clock):
+        bit 0 -> -V na 1ª metade e +V na 2ª (baixo -> alto)
+        bit 1 -> +V na 1ª metade e -V na 2ª (alto -> baixo)
+    A IEEE 802.3 usa a convenção inversa; aqui seguimos a dos slides.
     """
-    # TODO: implementar conforme a convenção acima.
-    raise NotImplementedError("camada_fisica.modular_manchester")
+    metade = AMOSTRAS_POR_BIT // 2
+    resto = AMOSTRAS_POR_BIT - metade
+    sinal = []
+    for bit in bits:
+        primeira, segunda = (V, -V) if bit == 1 else (-V, V)
+        sinal += [primeira] * metade + [segunda] * resto
+    return sinal
 
 
 def demodular_manchester(sinal):
-    """Decodificador Manchester.
+    """Compara a média das duas metades do bit: se caiu, é 1; se subiu, é 0.
 
-    COMO FAZER
-        1. Para cada janela de AMOSTRAS_POR_BIT amostras, calcule a média da
-           1ª metade (m1) e a da 2ª metade (m2).
-        2. Se m1 > m2 houve transição de DESCIDA -> bit 1; senão bit 0.
-        Comparar as duas metades (em vez de olhar o sinal absoluto) torna a
-        decisão imune a um deslocamento DC (média do ruído diferente de zero).
+    Comparar as metades (e não olhar o nível absoluto) funciona mesmo se o
+    ruído tiver média diferente de zero.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.demodular_manchester")
+    metade = AMOSTRAS_POR_BIT // 2
+    bits = []
+    for inicio in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
+        primeira = sinal[inicio:inicio + metade]
+        segunda = sinal[inicio + metade:inicio + AMOSTRAS_POR_BIT]
+        m1 = sum(primeira) / len(primeira)
+        m2 = sum(segunda) / len(segunda)
+        bits.append(1 if m1 > m2 else 0)
+    return bits
 
 
 def modular_bipolar(bits):
-    """Bipolar (AMI - Alternate Mark Inversion).
+    """Bipolar (AMI): bit 0 -> 0 V; bit 1 alterna entre +V e -V.
 
-    REGRA
-        bit 0 -> 0 V
-        bit 1 -> alterna entre +V e -V a cada novo "1" (o primeiro 1 é +V)
-        A alternância faz o nível DC médio da linha ser ~0.
-
-    COMO FAZER
-        Mantenha uma variável `polaridade` (começa em +V). A cada bit 1,
-        emita `polaridade` e depois inverta o sinal dela (polaridade = -polaridade).
-        Bit 0 não altera a polaridade.
+    O primeiro 1 é +V, o seguinte -V, e assim por diante. Com isso o nível
+    médio da linha fica perto de zero.
     """
-    # TODO: implementar conforme a regra acima.
-    raise NotImplementedError("camada_fisica.modular_bipolar")
+    sinal = []
+    polaridade = V
+    for bit in bits:
+        if bit == 1:
+            sinal += [polaridade] * AMOSTRAS_POR_BIT
+            polaridade = -polaridade
+        else:
+            sinal += [0.0] * AMOSTRAS_POR_BIT
+    return sinal
 
 
 def demodular_bipolar(sinal):
-    """Decodificador Bipolar.
+    """Decide pelo módulo da média, já que o 1 pode vir em +V ou em -V.
 
-    COMO FAZER
-        1. Média de cada janela de AMOSTRAS_POR_BIT amostras.
-        2. Decida pelo MÓDULO da média, pois o "1" pode vir em +V ou -V:
-               abs(media) > V/2 -> bit 1;  senão bit 0.
-        V/2 é o ponto médio entre os níveis 0 e V (limiar de decisão ótimo).
+    O limiar V/2 fica no meio entre os níveis 0 e V.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.demodular_bipolar")
+    bits = []
+    for inicio in range(0, len(sinal) - AMOSTRAS_POR_BIT + 1, AMOSTRAS_POR_BIT):
+        janela = sinal[inicio:inicio + AMOSTRAS_POR_BIT]
+        media = sum(janela) / AMOSTRAS_POR_BIT
+        bits.append(1 if abs(media) > V / 2 else 0)
+    return bits
 
 
-# ===========================================================================
-# 2) MODULAÇÃO POR PORTADORA
-#
-# Representação I/Q (a "grande ideia" do estudo 01): TODAS as modulações
-# abaixo geram o mesmo tipo de sinal
-#
-#       s(t) = I * cos(2*pi*f*t)  -  Q * sen(2*pi*f*t)
-#
-# onde o par (I, Q) é o ponto da constelação escolhido pelos bits:
-#   ASK  : (I, Q) = (0, 0) ou (V, 0)           -> muda a amplitude
-#   FSK  : (I, Q) = (V, 0), mas f muda         -> muda a frequência
-#   8PSK : (I, Q) = (V*cos(fase), V*sen(fase)) -> muda a fase (8 fases)
-#   32QAM: (I, Q) em grade 6x6 sem os 4 cantos -> muda amplitude e fase
-#
-# O DEMODULADOR recupera I e Q por CORRELAÇÃO com a portadora de referência:
-#       I =  (2/N) * soma( s[n] * cos(2*pi*f*n/N) )
-#       Q = -(2/N) * soma( s[n] * sen(2*pi*f*n/N) )
-# e escolhe o ponto de constelação mais próximo do (I, Q) medido.
-# (Prova: como a média de cos² em ciclos inteiros é 1/2, a soma devolve I/2,
-# daí o fator 2/N. A média de cos*sen em ciclos inteiros é 0, por isso I e Q
-# não se misturam. Por isso CICLOS_* precisam ser inteiros.)
-# ===========================================================================
+# portadora 
+# as modulações geram o mesmo tipo de sinal:
+#       s(t) = I * cos(2*pi*f*t) - Q * sen(2*pi*f*t)
+# e o que muda é o ponto (I, Q) escolhido pelos bits:
+#   ASK  : (0, 0) ou (V, 0)                  -> muda a amplitude
+#   FSK  : (V, 0), mas a frequência muda
+#   8PSK : (V*cos(fase), V*sen(fase))        -> muda a fase
+#   32QAM: ponto de uma grade em cruz        -> muda amplitude e fase
+
 def onda(i, q, ciclos):
-    """Gera UM símbolo da portadora a partir do ponto (i, q).
+    """Gera um símbolo da portadora (AMOSTRAS_POR_SIMBOLO amostras) para o ponto (i, q).
 
-    ENTRADA
-        i, q   : coordenadas do ponto da constelação (em Volts)
-        ciclos : frequência da portadora, em ciclos POR SÍMBOLO (inteiro)
-    SAÍDA
-        list[float] com AMOSTRAS_POR_SIMBOLO amostras.
-
-    FÓRMULA (para n = 0 .. N-1, com N = AMOSTRAS_POR_SIMBOLO)
-        angulo = 2 * pi * ciclos * n / N
-        amostra = i * cos(angulo) - q * sen(angulo)
+    `ciclos` é a frequência em ciclos por símbolo.
     """
-    # TODO: implementar conforme a fórmula acima.
-    raise NotImplementedError("camada_fisica.onda")
+    n_total = AMOSTRAS_POR_SIMBOLO
+    simbolo = []
+    for n in range(n_total):
+        angulo = 2 * math.pi * ciclos * n / n_total
+        simbolo.append(i * math.cos(angulo) - q * math.sin(angulo))
+    return simbolo
 
 
 def correlacionar(simbolo, ciclos):
-    """Operação INVERSA de onda(): recupera (I, Q) de um símbolo recebido.
+    """Faz o inverso de onda(): recupera (i, q) de um símbolo recebido.
 
-    FÓRMULA (N = len(simbolo))
-        angulo_n = 2 * pi * ciclos * n / N
-        I =  (2/N) * soma( simbolo[n] * cos(angulo_n) )
-        Q = -(2/N) * soma( simbolo[n] * sen(angulo_n) )
-    O sinal negativo em Q vem do "- Q*sen" usado em onda().
-
-    SAÍDA
-        tupla (i, q).
-
-    DICA
-        Teste isolado: correlacionar(onda(0.3, -0.7, 4), 4) deve devolver
-        algo muito próximo de (0.3, -0.7).
+    O sinal negativo no Q vem do "- Q*sen" usado em onda().
     """
-    # TODO: implementar conforme a fórmula acima.
-    raise NotImplementedError("camada_fisica.correlacionar")
+    n_total = len(simbolo)
+    soma_i = 0.0
+    soma_q = 0.0
+    for n, amostra in enumerate(simbolo):
+        angulo = 2 * math.pi * ciclos * n / n_total
+        soma_i += amostra * math.cos(angulo)
+        soma_q += amostra * math.sin(angulo)
+    return (2 / n_total) * soma_i, -(2 / n_total) * soma_q
 
 
 def pad(bits, tamanho):
-    """Completa `bits` com zeros até o comprimento ser múltiplo de `tamanho`.
+    """Completa com zeros até o número de bits ser múltiplo de `tamanho`.
 
-    POR QUÊ?
-        8PSK agrupa 3 bits por símbolo e 32-QAM agrupa 5. Se sobrarem bits no
-        final, o último símbolo ficaria incompleto. O excedente é descartado
-        pelo receptor no desenquadramento (o enquadramento sabe onde a
-        mensagem termina).
-
-    EXEMPLO
-        pad([1, 0, 1, 1], 3)  ->  [1, 0, 1, 1, 0, 0]
-        pad([1, 0, 1], 3)     ->  [1, 0, 1]   (já é múltiplo: devolve igual)
+    8PSK usa 3 bits por símbolo e 32-QAM usa 5; sem isso o último símbolo
+    ficaria incompleto. O receptor descarta o excedente no desenquadramento.
     """
-    # TODO: implementar (resto = len(bits) % tamanho; complete com zeros).
-    raise NotImplementedError("camada_fisica.pad")
+    resto = len(bits) % tamanho
+    if resto == 0:
+        return list(bits)
+    return list(bits) + [0] * (tamanho - resto)
 
 
 def bits_do_ponto_mais_proximo(i, q, constelacao):
-    """Decisão de MÍNIMA DISTÂNCIA no plano I/Q.
+    """Decisão por mínima distância: devolve os bits do ponto de referência mais perto de (i, q).
 
-    ENTRADA
-        i, q        : ponto medido pelo receptor (com ruído)
-        constelacao : dict {tupla_de_bits: (I_ref, Q_ref)}
-    SAÍDA
-        list[int] com os bits do ponto de referência mais perto de (i, q).
-
-    COMO FAZER
-        Para cada ponto de referência calcule a distância ao quadrado
-            (I_ref - i)**2 + (Q_ref - q)**2
-        (não precisa da raiz quadrada: só estamos COMPARANDO distâncias) e
-        guarde o menor. É isso que dá robustez ao ruído: o símbolo só é
-        decidido errado se o ruído empurrar o ponto para além da fronteira
-        entre dois pontos vizinhos.
+    `constelacao` é um dict {tupla_de_bits: (I_ref, Q_ref)}. Comparamos a
+    distância ao quadrado, pois a raiz não muda qual é a menor.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.bits_do_ponto_mais_proximo")
+    melhor_bits = None
+    melhor_dist = None
+    for bits, (i_ref, q_ref) in constelacao.items():
+        dist = (i_ref - i) ** 2 + (q_ref - q) ** 2
+        if melhor_dist is None or dist < melhor_dist:
+            melhor_dist = dist
+            melhor_bits = bits
+    return list(melhor_bits)
 
 
-# --------------------------------- ASK ------------------------------------
+def _simbolos(sinal):
+    """Fatia o sinal em janelas de um símbolo, ignorando uma sobra incompleta."""
+    n = AMOSTRAS_POR_SIMBOLO
+    return [sinal[k:k + n] for k in range(0, len(sinal) - n + 1, n)]
+
+
+# ask
 def modular_ask(bits):
-    """ASK (Amplitude Shift Keying) em forma on-off.
-
-    REGRA
-        bit 1 -> portadora com amplitude V      (i = V, q = 0)
-        bit 0 -> ausência de portadora (0 V)    (i = 0, q = 0)
-    Use onda(i, q, CICLOS_PORTADORA) para cada bit e concatene.
-    """
-    # TODO: implementar conforme a regra acima.
-    raise NotImplementedError("camada_fisica.modular_ask")
+    """ASK on-off: bit 1 -> portadora com amplitude V; bit 0 -> sem portadora."""
+    sinal = []
+    for bit in bits:
+        i = V if bit == 1 else 0.0
+        sinal += onda(i, 0.0, CICLOS_PORTADORA)
+    return sinal
 
 
 def demodular_ask(sinal):
-    """Demodulador ASK.
-
-    COMO FAZER
-        1. Fatie o sinal em janelas de AMOSTRAS_POR_SIMBOLO amostras.
-        2. correlacionar(janela, CICLOS_PORTADORA) -> (i, q).
-        3. Amplitude = math.hypot(i, q)  (= raiz de i² + q²).
-        4. Limiar V/2:  amplitude > V/2 -> 1;  senão 0.
-    """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.demodular_ask")
+    """Mede a amplitude de cada símbolo e compara com o limiar V/2."""
+    bits = []
+    for simbolo in _simbolos(sinal):
+        i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+        amplitude = math.hypot(i, q)
+        bits.append(1 if amplitude > V / 2 else 0)
+    return bits
 
 
-# --------------------------------- FSK ------------------------------------
+# fsk
 def modular_fsk(bits):
-    """FSK (Frequency Shift Keying) binário.
-
-    REGRA
-        bit 0 -> portadora com CICLOS_FSK[0] ciclos/símbolo
-        bit 1 -> portadora com CICLOS_FSK[1] ciclos/símbolo
-        A amplitude é sempre V; só a frequência muda: onda(V, 0.0, ciclos).
-    """
-    # TODO: implementar conforme a regra acima.
-    raise NotImplementedError("camada_fisica.modular_fsk")
+    """FSK binário: a amplitude é sempre V e a frequência depende do bit."""
+    sinal = []
+    for bit in bits:
+        sinal += onda(V, 0.0, CICLOS_FSK[bit])
+    return sinal
 
 
 def demodular_fsk(sinal):
-    """Demodulador FSK (detecção não-coerente por energia).
+    """Correlaciona com as duas frequências e escolhe a de maior energia.
 
-    COMO FAZER
-        Para cada janela de símbolo:
-        1. Correlacione com a frequência f0 e depois com f1.
-        2. A "energia" em cada frequência é math.hypot(i, q) de cada
-           correlação. (Usar o módulo, e não só I, torna a decisão
-           independente da fase do sinal.)
-        3. Escolha a frequência com MAIS energia: e1 > e0 -> bit 1; senão 0.
+    Usar o módulo (hypot) em vez de só o I deixa a decisão independente da
+    fase do sinal.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.demodular_fsk")
+    bits = []
+    for simbolo in _simbolos(sinal):
+        e0 = math.hypot(*correlacionar(simbolo, CICLOS_FSK[0]))
+        e1 = math.hypot(*correlacionar(simbolo, CICLOS_FSK[1]))
+        bits.append(1 if e1 > e0 else 0)
+    return bits
 
 
-# --------------------------------- 8PSK -----------------------------------
-# 8PSK (Phase Shift Keying com 8 fases): 3 bits por símbolo. Os 8 pontos ficam
-# em uma circunferência de raio V, separados por 45 graus.
-#
-#   fase_k = k * 45 graus  (k = 0..7)          (I, Q) = (V*cos(fase), V*sen(fase))
-#
-# Use MAPEAMENTO GRAY (confirmado nos slides CF-12, 5 e 9): pontos vizinhos na
-# circunferência diferem em APENAS 1 bit. Assim, o erro mais provável (ruído empurra para o vizinho)
-# corrompe só 1 dos 3 bits. Sequência Gray de 3 bits, em ordem de fase:
-#       000, 001, 011, 010, 110, 111, 101, 100
-#
-# TODO: preencher MAPA_8PSK = {(b1, b2, b3): (I, Q), ...} com 8 entradas.
-#       Pode montar com um laço usando a lista Gray acima e math.cos/math.sin.
+# 8psk
+GRAY_3_BITS = [(0, 0, 0), (0, 0, 1), (0, 1, 1), (0, 1, 0),
+               (1, 1, 0), (1, 1, 1), (1, 0, 1), (1, 0, 0)]
+
 MAPA_8PSK = {}
+for _k, _bits in enumerate(GRAY_3_BITS):
+    _fase = _k * math.pi / 4
+    MAPA_8PSK[_bits] = (V * math.cos(_fase), V * math.sin(_fase))
 
 
 def modular_8psk(bits):
-    """8PSK: agrupa os bits de 3 em 3 e transmite um símbolo de fase.
-
-    COMO FAZER
-        1. bits = pad(bits, 3).
-        2. Para cada grupo (bits[k], bits[k+1], bits[k+2]) busque (I, Q) em
-           MAPA_8PSK e gere onda(i, q, CICLOS_PORTADORA).
-        3. Concatene os símbolos.
-    """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.modular_8psk")
+    """Agrupa os bits de 3 em 3 e transmite um símbolo de fase para cada grupo."""
+    bits = pad(bits, 3)
+    sinal = []
+    for k in range(0, len(bits), 3):
+        i, q = MAPA_8PSK[tuple(bits[k:k + 3])]
+        sinal += onda(i, q, CICLOS_PORTADORA)
+    return sinal
 
 
 def demodular_8psk(sinal):
-    """Demodulador 8PSK.
+    """Recupera (i, q) de cada símbolo e decide pelo ponto mais próximo.
 
-    COMO FAZER
-        Para cada janela de símbolo: correlacionar -> (i, q) e depois
-        bits_do_ponto_mais_proximo(i, q, MAPA_8PSK). Concatene os trios de bits.
-        O fluxo devolvido pode ter bits de padding no fim (o enlace descarta).
+    A saída pode ter bits de padding no fim; o enlace descarta.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.demodular_8psk")
+    bits = []
+    for simbolo in _simbolos(sinal):
+        i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+        bits += bits_do_ponto_mais_proximo(i, q, MAPA_8PSK)
+    return bits
 
 
-# -------------------------------- 32-QAM ----------------------------------
-# 32-QAM (Quadrature Amplitude Modulation): 5 bits por símbolo (2^5 = 32
-# pontos). Varia AMPLITUDE E FASE ao mesmo tempo.
-#
-# Constelação em "CRUZ": uma grade 6x6 (36 pontos) com os 4 cantos removidos
-# (36 - 4 = 32). Níveis de cada eixo: {-5, -3, -1, +1, +3, +5} * ESCALA_QAM.
-# Remover os cantos (os pontos de maior energia) economiza potência de pico.
-#
-#            Q
-#      . x x x x .        x = ponto da constelação
-#      x x x x x x        . = canto removido: (±5, ±5)
-#      x x x x x x   I
-#      x x x x x x
-#      x x x x x x
-#      . x x x x .
-#
-# ESCALA_QAM normaliza para que o maior |I| ou |Q| (= 5 níveis) seja V.
+# 32-qam
 ESCALA_QAM = V / 5
+CICLO_QUADRANTE = [(1, 1), (3, 1), (5, 1), (5, 3), (3, 3), (3, 5), (1, 5), (1, 3)]
+QUADRANTES = {(1, 1): (0, 0), (-1, 1): (0, 1), (-1, -1): (1, 1), (1, -1): (1, 0)}
 
-# Formato em cruz confirmado no slide 4 do CF-13; níveis de I/Q e rotulagem dos
-# 5 bits NÃO constam nos slides. DECISÃO DE PROJETO (docs/DECISOES.md):
-#
-# Rotulagem de 5 bits = 2 bits de QUADRANTE + 3 bits de POSIÇÃO:
-#   - Quadrante, em Gray ao redor da origem:
-#         (I>0, Q>0) = 00   (I<0, Q>0) = 01   (I<0, Q<0) = 11   (I>0, Q<0) = 10
-#   - Posição: cada quadrante tem 8 pontos (3x3 níveis |I|,|Q| em {1,3,5} menos o
-#     canto (5,5)). Eles formam um CICLO em que cada ponto é vizinho do
-#     seguinte: (1,1) (3,1) (5,1) (5,3) (3,3) (3,5) (1,5) (1,3) e de volta ao
-#     início. Rotule ao longo desse ciclo com o Gray de 3 bits
-#     000, 001, 011, 010, 110, 111, 101, 100 (o mesmo do 8PSK).
-#   - A posição só depende de (|I|, |Q|); quadrantes vizinhos repetem os 3 bits
-#     de posição e diferem só nos 2 bits de quadrante (1 bit, pois estão em Gray).
-# Gray perfeito é impossível na cruz: dos 52 pares de pontos vizinhos, 48
-# diferem em 1 bit e 4 em 3 bits. O que NÃO pode faltar: os 32 rótulos são
-# DISTINTOS (um-para-um), senão o receptor não consegue decodificar.
-#
-# TODO: preencher MAPA_32QAM = {(b1, b2, b3, b4, b5): (I, Q), ...} com 32 entradas,
-#       com I e Q em Volts = nível * ESCALA_QAM.
-MAPA_32QAM = {}
+def montar_mapa_32qam():
+    """Monta o dict {5 bits: (I, Q)}.
+
+    Cada quadrante tem 8 pontos. O ponto da posição p do ciclo ganha os 3 bits
+    Gray de posição p, precedidos pelos 2 bits do quadrante. As coordenadas
+    saem do ponto do ciclo com o sinal do quadrante, vezes ESCALA_QAM.
+    """
+    mapa = {}
+    for (sinal_i, sinal_q), bits_quadrante in QUADRANTES.items():
+        for posicao, (nivel_i, nivel_q) in enumerate(CICLO_QUADRANTE):
+            rotulo = bits_quadrante + GRAY_3_BITS[posicao]
+            i = sinal_i * nivel_i * ESCALA_QAM
+            q = sinal_q * nivel_q * ESCALA_QAM
+            mapa[rotulo] = (i, q)
+    return mapa
+
+
+MAPA_32QAM = montar_mapa_32qam()
 
 
 def modular_32qam(bits):
-    """32-QAM: agrupa os bits de 5 em 5 e transmite um símbolo (I, Q).
-
-    COMO FAZER
-        1. bits = pad(bits, 5).
-        2. Para cada grupo de 5 bits, busque (I, Q) em MAPA_32QAM e gere
-           onda(i, q, CICLOS_PORTADORA).
-        3. Concatene os símbolos.
-    """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.modular_32qam")
+    """Agrupa os bits de 5 em 5 e transmite um símbolo (I, Q) para cada grupo."""
+    bits = pad(bits, 5)
+    sinal = []
+    for k in range(0, len(bits), 5):
+        i, q = MAPA_32QAM[tuple(bits[k:k + 5])]
+        sinal += onda(i, q, CICLOS_PORTADORA)
+    return sinal
 
 
 def demodular_32qam(sinal):
-    """Demodulador 32-QAM.
+    """Recupera (i, q) de cada símbolo e decide pelo ponto mais próximo.
 
-    COMO FAZER
-        Para cada janela de símbolo: correlacionar -> (i, q) e depois
-        bits_do_ponto_mais_proximo(i, q, MAPA_32QAM).
-        ATENÇÃO: diferente do 16-QAM, NÃO dá para decidir cada eixo
-        separadamente, porque a constelação em cruz não é um produto
-        cartesiano (faltam os cantos). Use a decisão de mínima distância
-        sobre os 32 pontos.
+    Não dá para decidir cada eixo separado, porque a cruz não é uma grade
+    completa (faltam os cantos); por isso a mínima distância é feita sobre os
+    32 pontos.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_fisica.demodular_32qam")
+    bits = []
+    for simbolo in _simbolos(sinal):
+        i, q = correlacionar(simbolo, CICLOS_PORTADORA)
+        bits += bits_do_ponto_mais_proximo(i, q, MAPA_32QAM)
+    return bits
 
 
-# ===========================================================================
-# DESPACHO (interface única usada pelo Simulador e pela GUI)
-# Cada entrada é uma tupla (função_de_modulação, função_de_demodulação).
-# Acesso: MODULACOES_DIGITAIS["nrz"][0] é o modulador; [1] o demodulador.
-# ===========================================================================
+# Despacho: interface única usada pelo Simulador e pela GUI.
 MODULACOES_DIGITAIS = {"nrz": (modular_nrz_polar, demodular_nrz_polar),
                        "manchester": (modular_manchester, demodular_manchester),
                        "bipolar": (modular_bipolar, demodular_bipolar)}
@@ -416,7 +321,7 @@ MODULACOES_PORTADORA = {"ask": (modular_ask, demodular_ask),
 
 
 def modular_digital(bits, tipo):
-    """Aplica a modulação banda-base escolhida na GUI (chave de MODULACOES_DIGITAIS)."""
+    """Aplica a modulação banda-base escolhida na GUI."""
     return MODULACOES_DIGITAIS[tipo][0](bits)
 
 
@@ -426,7 +331,7 @@ def demodular_digital(sinal, tipo):
 
 
 def modular_portadora(bits, tipo):
-    """Aplica a modulação por portadora escolhida (tipo "nenhuma" -> None)."""
+    """Aplica a modulação por portadora escolhida (tipo "nenhuma" devolve None)."""
     if tipo == "nenhuma":
         return None
     return MODULACOES_PORTADORA[tipo][0](bits)
