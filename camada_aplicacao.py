@@ -1,76 +1,45 @@
 # -*- coding: utf-8 -*-
 """
-CAMADA DE APLICAÇÃO (chat de texto)
-===================================
-Enunciado, seção 1.4: a aplicação é um chat de texto. Aqui ficam só as duas
-conversões que ligam o mundo "humano" (strings) ao mundo da rede (bits):
+Camada de aplicação (chat de texto).
 
-  TX: texto digitado  ->  texto_para_bits()  ->  bits para a camada de enlace
-  RX: bits da camada de enlace  ->  bits_para_texto()  ->  texto legível
+Faz só as duas conversões entre o texto e os bits da rede:
+  - TX: texto digitado -> texto_para_bits() -> bits para a camada de enlace
+  - RX: bits do enlace -> bits_para_texto() -> texto legível
 
-CONVENÇÕES DO PROJETO (valem para TODOS os módulos):
-  - Bits   = list[int] com valores 0 ou 1.
-  - Ordem  = MSB primeiro (o bit mais significativo de cada byte vem antes).
-             Ex.: 'A' = 0x41 = 01000001 -> [0, 1, 0, 0, 0, 0, 0, 1]
-  - Codificação de caracteres = UTF-8 (superconjunto do ASCII que o
-    enunciado cita; assim acentos como 'ç' e 'ã' também funcionam).
+Convenções do projeto (valem para todos os módulos):
+  - Bits = list[int] com valores 0 ou 1.
+  - Ordem = bit mais significativo primeiro. Ex.: 'A' = 0x41 = 01000001.
+  - Caracteres em UTF-8, que inclui o ASCII e também acentos como 'ç' e 'ã'.
 """
 
 
 def texto_para_bits(texto):
-    """Converte uma string em uma lista de bits (codificador em bits do TX).
+    """Converte o texto digitado na GUI na sequência de bits enviada ao enlace.
 
-    OBJETIVO
-        Transformar o texto digitado na GUI na sequência de bits que será o
-        payload entregue à camada de enlace ("Integração Vertical").
-
-    COMO FAZER
-        1. Converta a string em bytes:  texto.encode("utf-8")
-           (devolve um objeto `bytes`; iterar sobre ele dá inteiros 0..255).
-        2. Para cada byte, extraia os 8 bits do MAIS significativo (bit 7)
-           para o MENOS significativo (bit 0).
-        3. Para extrair o bit de posição i de um byte use deslocamento + máscara:
-               bit = (byte >> i) & 1
-           `byte >> i` empurra o bit i para a posição 0 e `& 1` isola só ele.
-        4. Acumule tudo em uma única lista.
-
-    EXEMPLO
-        texto_para_bits("A")  ->  [0, 1, 0, 0, 0, 0, 0, 1]
-        texto_para_bits("ç")  ->  16 bits (ç ocupa 2 bytes em UTF-8)
-
-    DICA
-        range(7, -1, -1) percorre 7, 6, 5, ..., 0.
+    Codifica a string em bytes UTF-8 e expande cada byte em 8 bits, do mais
+    significativo para o menos. Caracteres fora do ASCII ocupam mais de um byte.
+    Ex.: "A" -> [0, 1, 0, 0, 0, 0, 0, 1]; "ç" -> 16 bits.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_aplicacao.texto_para_bits")
+    bits = []
+    for byte in texto.encode("utf-8"):
+        for posicao in range(7, -1, -1):
+            bits.append((byte >> posicao) & 1)  # isola o bit da posição
+    return bits
 
 
 def bits_para_texto(bits):
-    """Converte uma lista de bits de volta para string (conversor do RX).
+    """Reconstrói o texto a partir dos bits entregues pelas camadas inferiores.
 
-    OBJETIVO
-        Reconstruir a mensagem legível a partir do fluxo de bits que as
-        camadas inferiores entregaram ("Saída de Dados" do receptor).
-
-    COMO FAZER
-        1. Calcule quantos bytes completos existem: len(bits) // 8
-           (bits sobrando no final, que não formam um byte, são ignorados).
-        2. Para cada grupo de 8 bits monte o inteiro correspondente:
-               byte = 0
-               para cada bit do grupo:  byte = (byte << 1) | bit
-           (a cada passo "abre espaço" à direita com << 1 e encaixa o novo bit
-           com |).
-        3. Junte os bytes em um `bytearray` (ou em uma lista + bytes(lista)).
-        4. Decodifique:  dados.decode("utf-8", errors="replace")
-
-    POR QUE errors="replace"?
-        Se o canal corromper bits, a sequência de bytes pode não ser UTF-8
-        válido. Com "replace" o Python troca o trecho inválido por '�'
-        em vez de lançar exceção e derrubar o simulador: queremos MOSTRAR a
-        mensagem corrompida, não travar.
-
-    EXEMPLO
-        bits_para_texto([0, 1, 0, 0, 0, 0, 0, 1])  ->  "A"
+    Agrupa os bits de 8 em 8 em bytes (uma sobra incompleta no final é
+    ignorada) e decodifica em UTF-8. Com errors="replace", bytes inválidos
+    viram '�' em vez de gerar exceção: se o canal corromper bits, queremos
+    mostrar a mensagem corrompida, não travar o simulador.
+    Ex.: [0, 1, 0, 0, 0, 0, 0, 1] -> "A"
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("camada_aplicacao.bits_para_texto")
+    dados = bytearray()
+    for inicio in range(0, len(bits) // 8 * 8, 8):
+        byte = 0
+        for bit in bits[inicio:inicio + 8]:
+            byte = (byte << 1) | bit            # empurra o valor e encaixa o bit
+        dados.append(byte)
+    return dados.decode("utf-8", errors="replace")
