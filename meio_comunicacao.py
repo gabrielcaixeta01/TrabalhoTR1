@@ -1,73 +1,48 @@
 # -*- coding: utf-8 -*-
 """
-MEIO DE COMUNICAÇÃO
-===================
-Enunciado, seção 1.1. Simula o canal físico entre o transmissor e o receptor.
+Meio de comunicação.
 
-REQUISITOS DO PROFESSOR
-  1. Representação física: o sinal que trafega é uma lista de amostras de
-     TENSÃO, em Volts (V). Nada de bits "puros" passando pelo canal.
-  2. Ruído AWGN (Additive White Gaussian Noise): a CADA amostra do sinal soma-se
-     um valor sorteado de uma variável aleatória Gaussiana (Normal) n(x, sigma):
-         x     = média do ruído (V)
-         sigma = desvio padrão do ruído (V)
-     Ambos configuráveis pela interface gráfica.
+Canal entre o transmissor e o receptor. O sinal que passa por aqui é
+uma lista de amostras de tensão (em Volts), e o canal não é perfeito: cada
+amostra chega com um pouco de ruído somado.
 
-     Aditivo -> sinal_recebido[k] = sinal_enviado[k] + ruido[k]
-     Branco  -> cada ruido[k] é sorteado de forma independente dos outros.
-     Gaussiano -> ruido[k] ~ Normal(x, sigma).
+O ruído é gaussiano: para cada amostra sorteamos um valor de uma distribuição
+normal com média x e desvio padrão sigma (os dois configuráveis na interface),
+sempre de forma independente das outras amostras:
 
-RESTRIÇÃO DO TRABALHO
-  O enunciado proíbe importar bibliotecas externas que entreguem o protocolo
-  pronto (ex.: zlib para CRC). Gerar números aleatórios com o módulo padrão
-  `random` do Python é permitido: ele é apenas o gerador da variável
-  aleatória, não implementa nenhum protocolo.
+    sinal_recebido[k] = sinal_enviado[k] + ruido[k]
 """
 
 import random
 
 
 def transmitir(sinal, media, sigma):
-    """Passa o sinal pelo canal e devolve o sinal recebido (com ruído).
+    """Passa o sinal pelo canal e devolve o que o receptor vai enxergar.
 
-    ENTRADA
-        sinal : list[float]  amostras em Volts, vindas do transmissor
-        media : float        média x do ruído gaussiano (V)
-        sigma : float        desvio padrão do ruído gaussiano (V)
-    SAÍDA
-        list[float] com o MESMO tamanho de `sinal`.
-
-    COMO FAZER
-        1. (Opcional, mas recomendado) Se media == 0 e sigma == 0 não há
-           ruído: devolva uma CÓPIA do sinal (list(sinal)) para não devolver
-           a mesma lista do transmissor.
-        2. Caso contrário, para cada amostra some um sorteio gaussiano:
-               amostra + random.gauss(media, sigma)
-           random.gauss(mu, sigma) sorteia um valor de N(mu, sigma).
-        3. NÃO altere a lista original (o simulador a usa depois para
-           calcular a potência do ruído).
-
-    DICA
-        Uma list comprehension resolve em uma linha:
-            [a + random.gauss(media, sigma) for a in sinal]
+    Para cada amostra de tensão que saiu do transmissor, soma um valor sorteado
+    de uma normal (media, sigma). O resultado é uma lista nova do mesmo tamanho;
+    a original não é mexida, porque o simulador ainda precisa dela para medir
+    a potência do ruído depois.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("meio_comunicacao.transmitir")
+    # Canal ideal: sem ruído nenhum. Devolve uma cópia só para o receptor não
+    # ficar com a mesma lista do transmissor.
+    if media == 0 and sigma == 0:
+        return list(sinal)
+
+    # Um sorteio gaussiano novo para cada amostra.
+    return [amostra + random.gauss(media, sigma) for amostra in sinal]
 
 
 def potencia_media(sinal):
-    """Potência média de um sinal, em Watts, assumindo carga de 1 ohm.
+    """Calcula, em Watts, considerando carga de 1 ohm.
 
-    FÓRMULA
-        Para tensão v sobre resistência R, a potência instantânea é v²/R.
-        Com R = 1 ohm:   P = (1/N) * soma( v[k]² )   para k = 0..N-1.
+    Serve para tirar a relação sinal-ruído.
 
-    USO
-        O simulador calcula a potência do sinal e a do ruído para mostrar na
-        GUI (e dá para estimar a relação sinal-ruído SNR = P_sinal / P_ruido).
-
-    CASOS DE BORDA
-        Lista vazia -> devolver 0.0 (evita divisão por zero).
+    A potência instantânea é v²/R; com R = 1 ohm vira só v². A média é a soma
+    dos quadrados das amostras dividida pela quantidade de amostras.
     """
-    # TODO: implementar conforme a fórmula acima.
-    raise NotImplementedError("meio_comunicacao.potencia_media")
+    # Lista vazia: evita dividir por zero.
+    if len(sinal) == 0:
+        return 0.0
+
+    return sum(v * v for v in sinal) / len(sinal)
