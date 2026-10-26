@@ -1,22 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-SIMULADOR (rotina principal)
-============================
-Orquestra todas as camadas para simular uma transmissão completa, seguindo a
-Figura 1 do enunciado ("Diagrama de desenvolvimento"):
+Simulador (rotina principal).
 
-      Programa/Thread TX                                Programa/Thread RX
+Liga todas as camadas para simular uma transmissão completa, como no diagrama
+do enunciado:
+
+      Thread TX                                          Thread RX
   aplicação -> enlace -> física  --> MEIO (+ ruído) --> física -> enlace -> aplicação
 
-O enunciado pede para DIFERENCIAR transmissor e receptor: cada um roda em sua
-própria thread (_rotina_tx e _rotina_rx) e o único ponto de contato entre eles
-é o MEIO DE COMUNICAÇÃO, ligado por filas (queue.Queue).
+Transmissor e receptor rodam em threads separadas (_rotina_tx e _rotina_rx) e
+só se comunicam pelo meio de comunicação, ligado a eles por filas (queue.Queue).
 
-Executar `python3 simulador.py` abre a interface gráfica. A função
-executar_simulacao() também pode ser usada sozinha (é o que testes.py faz).
+`python3 simulador.py` abre a interface gráfica. executar_simulacao() também
+funciona sozinha (é o que testes.py usa).
 
-Este módulo é o "colante" do projeto: ele só CHAMA funções das outras camadas,
-não implementa protocolo nenhum. Por isso é a última peça a ser integrada.
+Este módulo só chama funções das outras camadas; não implementa protocolo.
 """
 
 import threading
@@ -43,81 +41,113 @@ CONFIG_PADRAO = {
 
 
 def _rotina_tx(config, meio, resultados):
-    """THREAD TRANSMISSORA: desce a pilha de protocolos.
+    """Thread transmissora: desce a pilha de protocolos e entrega o sinal ao meio.
 
-    ENTRADA
-        config     : dict como CONFIG_PADRAO
-        meio       : queue.Queue por onde o sinal sai (meio.put(sinal))
-        resultados : dict compartilhado; guardamos cada etapa intermediária
-                     para a GUI exibir a "saída de bits/sinal" de cada
-                     camada, como no diagrama do enunciado.
-
-    PASSOS (e as chaves de `resultados` que cada um deve preencher)
-        1. APLICAÇÃO : texto_para_bits(config["texto"])
-                       -> resultados["tx_bits_aplicacao"]
-        2. ENLACE    : camada_enlace.transmitir(bits_app, config)
-                       -> resultados["tx_bits_enlace"]
-        3. FÍSICA, 1º estágio (banda-base): modular_digital(bits_enlace,
-                       config["mod_digital"])
-                       -> resultados["tx_sinal_banda_base"]
-        4. FÍSICA, 2º estágio (portadora, opcional): se mod_portadora != "nenhuma"
-                       o sinal que trafega é modular_portadora(bits_enlace, tipo);
-                       senão é o próprio banda-base.
-                       -> resultados["tx_sinal_transmitido"]
-        5. Entregue o sinal ao meio:  meio.put(sinal_tx)
+    Guarda em `resultados` a saída de cada etapa, para a GUI mostrar o que
+    cada camada produziu.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("simulador._rotina_tx")
+    # aplicação: texto -> bits
+    bits_app = camada_aplicacao.texto_para_bits(config["texto"])
+    resultados["tx_bits_aplicacao"] = bits_app
+
+    # enlace: quadros com EDC, Hamming e enquadramento
+    bits_enlace = camada_enlace.transmitir(bits_app, config)
+    resultados["tx_bits_enlace"] = bits_enlace
+
+    # física, 1º estágio: banda-base
+    sinal_banda_base = camada_fisica.modular_digital(bits_enlace, config["mod_digital"])
+    resultados["tx_sinal_banda_base"] = sinal_banda_base
+
+    # física, 2º estágio (opcional): com portadora, é ela que vai para o meio
+    if config["mod_portadora"] == "nenhuma":
+        sinal_tx = sinal_banda_base
+    else:
+        sinal_tx = camada_fisica.modular_portadora(bits_enlace, config["mod_portadora"])
+    resultados["tx_sinal_transmitido"] = sinal_tx
+
+    meio.put(sinal_tx)
 
 
 def _rotina_rx(config, meio, resultados):
-    """THREAD RECEPTORA: sobe a pilha de protocolos (caminho inverso).
+    """Thread receptora: espera o sinal do meio e sobe a pilha (caminho inverso)."""
+    sinal_rx = meio.get()               # bloqueia até o canal entregar o sinal
+    if sinal_rx is None:                # o transmissor falhou: nada a receber
+        return
+    resultados["rx_sinal_recebido"] = sinal_rx
 
-    PASSOS (chaves de `resultados` a preencher)
-        1. sinal_rx = meio.get()  (BLOQUEIA até o canal entregar o sinal)
-                       -> resultados["rx_sinal_recebido"]
-        2. FÍSICA:
-           - com portadora: demodular_portadora(sinal_rx, tipo) -> bits_rx.
-             Para exibir o estágio banda-base na GUI, remodule bits_rx com
-             modular_digital -> resultados["rx_sinal_banda_base"].
-           - sem portadora: demodular_digital(sinal_rx, mod_digital) -> bits_rx
-             e resultados["rx_sinal_banda_base"] = sinal_rx.
-           -> resultados["rx_bits_fisica"] = bits_rx
-        3. ENLACE    : camada_enlace.receber(bits_rx, config)
-                       -> resultados["rx_bits_aplicacao"], ["rx_relatorio_quadros"]
-        4. APLICAÇÃO : bits_para_texto(bits_app) -> resultados["rx_texto"]
+    # física: sinal -> bits
+    if config["mod_portadora"] == "nenhuma":
+        bits_rx = camada_fisica.demodular_digital(sinal_rx, config["mod_digital"])
+        resultados["rx_sinal_banda_base"] = sinal_rx
+    else:
+        bits_rx = camada_fisica.demodular_portadora(sinal_rx, config["mod_portadora"])
+        # Remodula os bits só para a GUI mostrar o estágio banda-base do receptor
+        resultados["rx_sinal_banda_base"] = camada_fisica.modular_digital(
+            bits_rx, config["mod_digital"])
+    resultados["rx_bits_fisica"] = bits_rx
+
+    # enlace: desenquadra, corrige e verifica
+    bits_app, relatorio = camada_enlace.receber(bits_rx, config)
+    resultados["rx_bits_aplicacao"] = bits_app
+    resultados["rx_relatorio_quadros"] = relatorio
+
+    # aplicação: bits -> texto
+    resultados["rx_texto"] = camada_aplicacao.bits_para_texto(bits_app)
+
+
+def _executar_thread(rotina, config, fila, resultados, erros):
+    """Roda uma rotina capturando a exceção, já que join() não a propaga.
+
+    O erro é guardado em `erros` para a thread principal relançar. Se o
+    transmissor falhar, manda None ao canal para ninguém ficar esperando.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("simulador._rotina_rx")
+    try:
+        rotina(config, fila, resultados)
+    except Exception as erro:
+        erros.append(erro)
+        if rotina is _rotina_tx:
+            fila.put(None)
 
 
 def executar_simulacao(config):
-    """Executa uma simulação completa e devolve o dict `resultados` com todas
-    as saídas intermediárias (bits e sinais de cada camada, TX e RX).
+    """Executa uma simulação completa e devolve o dict `resultados`.
 
-    COMO FAZER
-        1. Crie `resultados = {}` e duas filas: fila_tx (TX -> canal) e
-           fila_rx (canal -> RX), ambas queue.Queue().
-        2. Crie as duas threads (threading.Thread(target=..., args=(config,
-           fila, resultados))) e inicie ambas com .start(). O RX começa
-           bloqueado esperando o sinal.
-        3. FAÇA O PAPEL DO CANAL na thread principal:
-               sinal_limpo    = fila_tx.get()
-               sinal_ruidoso  = meio_comunicacao.transmitir(sinal_limpo,
-                                    config["ruido_media"], config["ruido_sigma"])
-               fila_rx.put(sinal_ruidoso)
-        4. Aguarde o fim das threads com .join().
-        5. Métricas para a GUI: ruido = sinal_ruidoso - sinal_limpo (amostra a
-           amostra); calcule potencia_media do sinal e do ruído e guarde em
-           resultados["potencia_sinal_w"] e resultados["potencia_ruido_w"].
-        6. Devolva resultados.
-
-    ARMADILHA: se uma thread levantar exceção (ex.: ValueError do enlace), o
-    join() não propaga o erro e a GUI ficaria esperando para sempre. Pense em
-    como capturar a exceção na thread e relançá-la na principal.
+    O dict traz os bits e sinais de cada camada (TX e RX) e as potências do
+    sinal e do ruído. A thread principal faz o papel do canal: pega o sinal do
+    TX, aplica o ruído e entrega ao RX. Se alguma thread falhar (ex.: o
+    ValueError do enlace), o erro é relançado aqui.
     """
-    # TODO: implementar conforme os passos acima.
-    raise NotImplementedError("simulador.executar_simulacao")
+    resultados = {}
+    erros = []
+    fila_tx = queue.Queue()             # TX -> canal
+    fila_rx = queue.Queue()             # canal -> RX
+
+    thread_tx = threading.Thread(target=_executar_thread,
+                                 args=(_rotina_tx, config, fila_tx, resultados, erros))
+    thread_rx = threading.Thread(target=_executar_thread,
+                                 args=(_rotina_rx, config, fila_rx, resultados, erros))
+    thread_tx.start()
+    thread_rx.start()                   # o RX já começa esperando o sinal
+
+    # Canal: recebe o sinal limpo do TX e entrega o sinal ruidoso ao RX
+    sinal_limpo = fila_tx.get()
+    if sinal_limpo is None:             # o TX falhou: libera o RX e segue
+        fila_rx.put(None)
+    else:
+        sinal_ruidoso = meio_comunicacao.transmitir(
+            sinal_limpo, config["ruido_media"], config["ruido_sigma"])
+        fila_rx.put(sinal_ruidoso)
+
+    thread_tx.join()
+    thread_rx.join()
+    if erros:
+        raise erros[0]
+
+    # Métricas: o ruído é a diferença entre o que chegou e o que foi enviado
+    ruido = [recebida - enviada for recebida, enviada in zip(sinal_ruidoso, sinal_limpo)]
+    resultados["potencia_sinal_w"] = meio_comunicacao.potencia_media(sinal_limpo)
+    resultados["potencia_ruido_w"] = meio_comunicacao.potencia_media(ruido)
+    return resultados
 
 
 if __name__ == "__main__":
