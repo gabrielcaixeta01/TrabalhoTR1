@@ -23,13 +23,18 @@ import math
 V = 1.0                      # amplitude de referência, em Volts
 AMOSTRAS_POR_BIT = 100       # resolução do sinal banda-base
 AMOSTRAS_POR_SIMBOLO = 100   # resolução de cada símbolo da portadora
-CICLOS_PORTADORA = 4         # ciclos de portadora por símbolo (inteiro)
+CICLOS_PORTADORA = 4         # ciclos de portadora por símbolo (sempre inteiro)
 CICLOS_FSK = (2, 4)          # FSK: ciclos/símbolo para o bit 0 e para o bit 1
+# Ciclos inteiros (e distintos no FSK) deixam cos e sen ortogonais dentro do
+# símbolo: é isso que permite separar I de Q (e f0 de f1) na correlação.
 
 
 # banda base
 def modular_nrz_polar(bits):
-    """NRZ-Polar: bit 1 -> +V e bit 0 -> -V durante todo o tempo do bit."""
+    """Transforma bits em tensão: bit 1 vira +V e bit 0 vira -V.
+
+    O nível fica constante durante todo o tempo do bit (não volta a zero).
+    """
     sinal = []
     for bit in bits:
         nivel = V if bit == 1 else -V
@@ -38,8 +43,9 @@ def modular_nrz_polar(bits):
 
 
 def demodular_nrz_polar(sinal):
-    """Decide cada bit pela média da janela: acima de 0 V é 1, senão 0.
+    """Recupera os bits do sinal recebido (com ruído).
 
+    Para cada bit calcula a média das suas amostras: acima de 0 V é 1, senão 0.
     A média diminui o efeito do ruído, que tem média perto de zero.
     """
     bits = []
@@ -51,8 +57,9 @@ def demodular_nrz_polar(sinal):
 
 
 def modular_manchester(bits):
-    """Manchester: sempre há uma transição no meio do bit.
+    """Transforma bits em tensão com uma transição no meio de cada bit.
 
+    Essa transição permite ao receptor se sincronizar com o transmissor.
     Convenção do slide 8 do CF-10 (dado XOR clock):
         bit 0 -> -V na 1ª metade e +V na 2ª (baixo -> alto)
         bit 1 -> +V na 1ª metade e -V na 2ª (alto -> baixo)
@@ -68,8 +75,9 @@ def modular_manchester(bits):
 
 
 def demodular_manchester(sinal):
-    """Compara a média das duas metades do bit: se caiu, é 1; se subiu, é 0.
+    """Recupera os bits olhando a transição no meio de cada um.
 
+    Compara a média das duas metades: se o sinal caiu, é 1; se subiu, é 0.
     Comparar as metades (e não olhar o nível absoluto) funciona mesmo se o
     ruído tiver média diferente de zero.
     """
@@ -85,10 +93,10 @@ def demodular_manchester(sinal):
 
 
 def modular_bipolar(bits):
-    """Bipolar (AMI): bit 0 -> 0 V; bit 1 alterna entre +V e -V.
+    """Transforma bits em tensão no código Bipolar (AMI).
 
-    O primeiro 1 é +V, o seguinte -V, e assim por diante. Com isso o nível
-    médio da linha fica perto de zero.
+    Bit 0 vira 0 V. Bit 1 alterna a polaridade: o primeiro 1 é +V, o seguinte
+    -V, e assim por diante. Com isso o nível médio da linha fica perto de zero.
     """
     sinal = []
     polaridade = V
@@ -102,8 +110,9 @@ def modular_bipolar(bits):
 
 
 def demodular_bipolar(sinal):
-    """Decide pelo módulo da média, já que o 1 pode vir em +V ou em -V.
+    """Recupera os bits do sinal Bipolar recebido.
 
+    Usa o módulo da média de cada bit, já que o 1 pode vir em +V ou em -V.
     O limiar V/2 fica no meio entre os níveis 0 e V.
     """
     bits = []
@@ -114,19 +123,19 @@ def demodular_bipolar(sinal):
     return bits
 
 
-# portadora 
-# as modulações geram o mesmo tipo de sinal:
+# portadora
+# Todas as modulações geram o mesmo tipo de sinal:
 #       s(t) = I * cos(2*pi*f*t) - Q * sen(2*pi*f*t)
 # e o que muda é o ponto (I, Q) escolhido pelos bits:
 #   ASK  : (0, 0) ou (V, 0)                  -> muda a amplitude
 #   FSK  : (V, 0), mas a frequência muda
 #   8PSK : (V*cos(fase), V*sen(fase))        -> muda a fase
 #   32QAM: ponto de uma grade em cruz        -> muda amplitude e fase
-
 def onda(i, q, ciclos):
-    """Gera um símbolo da portadora (AMOSTRAS_POR_SIMBOLO amostras) para o ponto (i, q).
+    """Gera um símbolo da portadora para o ponto (i, q) da constelação.
 
-    `ciclos` é a frequência em ciclos por símbolo.
+    Devolve AMOSTRAS_POR_SIMBOLO amostras. `ciclos` é a frequência, em ciclos
+    por símbolo.
     """
     n_total = AMOSTRAS_POR_SIMBOLO
     simbolo = []
@@ -139,7 +148,9 @@ def onda(i, q, ciclos):
 def correlacionar(simbolo, ciclos):
     """Faz o inverso de onda(): recupera (i, q) de um símbolo recebido.
 
-    O sinal negativo no Q vem do "- Q*sen" usado em onda().
+    Multiplica o símbolo por cos e por sen e soma. Em ciclos inteiros a média
+    de cos² é 1/2 e a de cos*sen é 0, então a soma devolve I/2 (daí o fator
+    2/N) sem misturar com Q. O sinal negativo no Q vem do "- Q*sen" de onda().
     """
     n_total = len(simbolo)
     soma_i = 0.0
@@ -156,6 +167,7 @@ def pad(bits, tamanho):
 
     8PSK usa 3 bits por símbolo e 32-QAM usa 5; sem isso o último símbolo
     ficaria incompleto. O receptor descarta o excedente no desenquadramento.
+    Ex.: pad([1, 0, 1, 1], 3) -> [1, 0, 1, 1, 0, 0]
     """
     resto = len(bits) % tamanho
     if resto == 0:
@@ -164,10 +176,12 @@ def pad(bits, tamanho):
 
 
 def bits_do_ponto_mais_proximo(i, q, constelacao):
-    """Decisão por mínima distância: devolve os bits do ponto de referência mais perto de (i, q).
+    """Descobre quais bits o receptor deve assumir para o ponto medido (i, q).
 
-    `constelacao` é um dict {tupla_de_bits: (I_ref, Q_ref)}. Comparamos a
-    distância ao quadrado, pois a raiz não muda qual é a menor.
+    O ruído desloca o ponto, então escolhemos o ponto de referência da
+    constelação mais próximo (mínima distância). `constelacao` é um dict
+    {tupla_de_bits: (I_ref, Q_ref)}. Comparamos a distância ao quadrado, pois
+    a raiz não muda qual é a menor.
     """
     melhor_bits = None
     melhor_dist = None
@@ -180,14 +194,20 @@ def bits_do_ponto_mais_proximo(i, q, constelacao):
 
 
 def _simbolos(sinal):
-    """Fatia o sinal em janelas de um símbolo, ignorando uma sobra incompleta."""
+    """Separa o sinal em símbolos de AMOSTRAS_POR_SIMBOLO amostras cada.
+
+    Uma sobra incompleta no final é ignorada.
+    """
     n = AMOSTRAS_POR_SIMBOLO
     return [sinal[k:k + n] for k in range(0, len(sinal) - n + 1, n)]
 
 
 # ask
 def modular_ask(bits):
-    """ASK on-off: bit 1 -> portadora com amplitude V; bit 0 -> sem portadora."""
+    """Modula os bits variando a amplitude da portadora (ASK on-off).
+
+    Bit 1 -> portadora com amplitude V; bit 0 -> sem portadora (0 V).
+    """
     sinal = []
     for bit in bits:
         i = V if bit == 1 else 0.0
@@ -196,7 +216,10 @@ def modular_ask(bits):
 
 
 def demodular_ask(sinal):
-    """Mede a amplitude de cada símbolo e compara com o limiar V/2."""
+    """Recupera os bits do sinal ASK.
+
+    Mede a amplitude de cada símbolo e compara com o limiar V/2.
+    """
     bits = []
     for simbolo in _simbolos(sinal):
         i, q = correlacionar(simbolo, CICLOS_PORTADORA)
@@ -207,7 +230,10 @@ def demodular_ask(sinal):
 
 # fsk
 def modular_fsk(bits):
-    """FSK binário: a amplitude é sempre V e a frequência depende do bit."""
+    """Modula os bits variando a frequência da portadora (FSK binário).
+
+    A amplitude é sempre V; o bit 0 usa CICLOS_FSK[0] e o bit 1 usa CICLOS_FSK[1].
+    """
     sinal = []
     for bit in bits:
         sinal += onda(V, 0.0, CICLOS_FSK[bit])
@@ -215,9 +241,10 @@ def modular_fsk(bits):
 
 
 def demodular_fsk(sinal):
-    """Correlaciona com as duas frequências e escolhe a de maior energia.
+    """Recupera os bits do sinal FSK.
 
-    Usar o módulo (hypot) em vez de só o I deixa a decisão independente da
+    Correlaciona cada símbolo com as duas frequências e escolhe a de maior
+    energia. Usar o módulo (hypot) em vez de só o I deixa a decisão independente da
     fase do sinal.
     """
     bits = []
@@ -229,17 +256,30 @@ def demodular_fsk(sinal):
 
 
 # 8psk
+# Código Gray: pontos vizinhos diferem em 1 bit só, então o erro mais provável
+# (o ruído jogar o ponto no vizinho) corrompe apenas 1 dos 3 bits.
 GRAY_3_BITS = [(0, 0, 0), (0, 0, 1), (0, 1, 1), (0, 1, 0),
                (1, 1, 0), (1, 1, 1), (1, 0, 1), (1, 0, 0)]
 
-MAPA_8PSK = {}
-for _k, _bits in enumerate(GRAY_3_BITS):
-    _fase = _k * math.pi / 4
-    MAPA_8PSK[_bits] = (V * math.cos(_fase), V * math.sin(_fase))
+
+def montar_mapa_8psk():
+    """Monta o dict {3 bits: (I, Q)}.
+
+    Os 8 pontos ficam numa circunferência de raio V, a cada 45 graus, e
+    recebem os rótulos de GRAY_3_BITS em ordem de fase.
+    """
+    mapa = {}
+    for k, rotulo in enumerate(GRAY_3_BITS):
+        fase = k * math.pi / 4
+        mapa[rotulo] = (V * math.cos(fase), V * math.sin(fase))
+    return mapa
+
+
+MAPA_8PSK = montar_mapa_8psk()
 
 
 def modular_8psk(bits):
-    """Agrupa os bits de 3 em 3 e transmite um símbolo de fase para cada grupo."""
+    """Modula variando a fase da portadora: cada 3 bits viram um símbolo."""
     bits = pad(bits, 3)
     sinal = []
     for k in range(0, len(bits), 3):
@@ -249,9 +289,10 @@ def modular_8psk(bits):
 
 
 def demodular_8psk(sinal):
-    """Recupera (i, q) de cada símbolo e decide pelo ponto mais próximo.
+    """Recupera os bits do sinal 8PSK.
 
-    A saída pode ter bits de padding no fim; o enlace descarta.
+    Obtém (i, q) de cada símbolo por correlação e decide pelo ponto mais
+    próximo. A saída pode ter bits de padding no fim; o enlace descarta.
     """
     bits = []
     for simbolo in _simbolos(sinal):
@@ -261,16 +302,25 @@ def demodular_8psk(sinal):
 
 
 # 32-qam
+# Constelação em cruz: grade 6x6 de níveis {-5, -3, -1, 1, 3, 5} sem os 4
+# cantos (36 - 4 = 32 pontos). ESCALA_QAM faz o nível 5 valer V.
 ESCALA_QAM = V / 5
+
+# Cada quadrante tem 8 pontos (|I| e |Q| em {1, 3, 5}, sem o canto (5, 5)).
+# CICLO_QUADRANTE lista esses pontos em ordem, cada um vizinho do seguinte.
 CICLO_QUADRANTE = [(1, 1), (3, 1), (5, 1), (5, 3), (3, 3), (3, 5), (1, 5), (1, 3)]
+
+# Sinal de (I, Q) de cada quadrante -> 2 bits do quadrante (em Gray).
 QUADRANTES = {(1, 1): (0, 0), (-1, 1): (0, 1), (-1, -1): (1, 1), (1, -1): (1, 0)}
+
 
 def montar_mapa_32qam():
     """Monta o dict {5 bits: (I, Q)}.
 
-    Cada quadrante tem 8 pontos. O ponto da posição p do ciclo ganha os 3 bits
-    Gray de posição p, precedidos pelos 2 bits do quadrante. As coordenadas
-    saem do ponto do ciclo com o sinal do quadrante, vezes ESCALA_QAM.
+    O rótulo de 5 bits é: 2 bits do quadrante + 3 bits Gray da posição do
+    ponto no ciclo. As coordenadas saem do ponto do ciclo, com o sinal do
+    quadrante, vezes ESCALA_QAM. Gray perfeito é impossível na cruz, mas os 32
+    rótulos são distintos, que é o que o receptor precisa para decodificar.
     """
     mapa = {}
     for (sinal_i, sinal_q), bits_quadrante in QUADRANTES.items():
@@ -286,7 +336,7 @@ MAPA_32QAM = montar_mapa_32qam()
 
 
 def modular_32qam(bits):
-    """Agrupa os bits de 5 em 5 e transmite um símbolo (I, Q) para cada grupo."""
+    """Modula variando amplitude e fase: cada 5 bits viram um símbolo (I, Q)."""
     bits = pad(bits, 5)
     sinal = []
     for k in range(0, len(bits), 5):
@@ -296,9 +346,10 @@ def modular_32qam(bits):
 
 
 def demodular_32qam(sinal):
-    """Recupera (i, q) de cada símbolo e decide pelo ponto mais próximo.
+    """Recupera os bits do sinal 32-QAM.
 
-    Não dá para decidir cada eixo separado, porque a cruz não é uma grade
+    Obtém (i, q) de cada símbolo por correlação e decide pelo ponto mais
+    próximo. Não dá para decidir cada eixo separado, porque a cruz não é uma grade
     completa (faltam os cantos); por isso a mínima distância é feita sobre os
     32 pontos.
     """
