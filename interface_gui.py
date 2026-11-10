@@ -1,17 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Interface gráfica (GTK 3).
-
-Janela única com o que o enunciado pede:
-  - configuração: texto, tamanho máximo do quadro, enquadramento, detecção e
-    correção de erros, modulação digital e por portadora, ruído (média e sigma);
-  - saídas do transmissor (bits da aplicação e do enlace) e do receptor (bits
-    demodulados, relatório dos quadros, bits da aplicação e texto final);
-  - gráficos dos sinais (banda-base, transmitido, recebido com ruído);
-  - potência do sinal e do ruído.
-
-A GUI não implementa protocolo: lê os campos, monta o dict `config`, chama
-simulador.executar_simulacao(config) e mostra o resultado.
+Interface gráfica (GTK 3): lê os campos, monta o dict `config`, chama
+simulador.executar_simulacao(config) e mostra bits, gráficos e potências.
+Não implementa protocolo.
 
 Dependências (Linux): python3-gi, gir1.2-gtk-3.0 e matplotlib.
 """
@@ -51,8 +42,10 @@ MAX_AMOSTRAS_GRAFICO = 4000
 
 
 def bits_str(bits):
-    """Transforma a lista de bits em texto '0101...' (corta se for muito longo)."""
-    texto = "".join(str(b) for b in bits[:MAX_BITS_TEXTO])
+    """Lista de bits em texto '0101...' (corta se for muito longo)."""
+    texto = ""
+    for bit in bits[:MAX_BITS_TEXTO]:
+        texto += str(bit)
     if len(bits) > MAX_BITS_TEXTO:
         texto += f"... ({len(bits)} bits no total)"
     return texto
@@ -74,7 +67,7 @@ class JanelaSimulador(Gtk.Window):
 
     # construção da tela
     def montar_config(self):
-        """Painel da esquerda: campos de configuração, botão e mensagem de status."""
+        """Painel da esquerda: campos, botão e status."""
         padrao = simulador.CONFIG_PADRAO
         grade = Gtk.Grid(column_spacing=6, row_spacing=6)
 
@@ -121,7 +114,7 @@ class JanelaSimulador(Gtk.Window):
 
     @staticmethod
     def novo_combo(opcoes, valor_inicial):
-        """Cria uma lista suspensa. Cada item guarda o valor de `config` como id."""
+        """Lista suspensa; o id de cada item é o valor usado em `config`."""
         combo = Gtk.ComboBoxText()
         for valor, rotulo in opcoes:
             combo.append(valor, rotulo)
@@ -129,7 +122,7 @@ class JanelaSimulador(Gtk.Window):
         return combo
 
     def montar_resultados(self):
-        """Painel da direita: texto com as saídas do Tx e do Rx e os gráficos."""
+        """Painel da direita: saídas do Tx e do Rx e os gráficos."""
         caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
 
         self.saida = Gtk.TextView(editable=False, monospace=True)
@@ -145,7 +138,7 @@ class JanelaSimulador(Gtk.Window):
 
     # lógica
     def ler_config(self):
-        """Lê os campos da tela e devolve o dict `config` do simulador."""
+        """Lê os campos e devolve o dict `config`."""
         return {
             "texto": self.entrada_texto.get_text(),
             "tam_max_quadro": int(self.spin_quadro.get_value()),
@@ -160,7 +153,7 @@ class JanelaSimulador(Gtk.Window):
         }
 
     def ao_transmitir(self, _botao):
-        """Clique em "Transmitir": roda a simulação e mostra os resultados."""
+        """Roda a simulação e mostra os resultados."""
         config = self.ler_config()
         if not config["texto"]:
             self.lbl_status.set_text("Digite um texto para transmitir.")
@@ -184,7 +177,7 @@ class JanelaSimulador(Gtk.Window):
             f"Texto recuperado {'corretamente' if recuperado else 'com diferenças'}.")
 
     def mostrar_texto(self, config, r):
-        """Escreve na caixa de texto as saídas de cada camada, do Tx e do Rx."""
+        """Escreve as saídas de cada camada, do Tx e do Rx."""
         quadros = ""
         for q in r["rx_relatorio_quadros"]:
             quadros += f"  Quadro {q['quadro']}: EDC {'ok' if q['edc_ok'] else 'COM ERRO'}"
@@ -211,7 +204,7 @@ class JanelaSimulador(Gtk.Window):
         self.saida.get_buffer().set_text(texto)
 
     def plotar(self, series):
-        """Desenha cada série (título, amostras) em um gráfico, um embaixo do outro."""
+        """Um gráfico por série (título, amostras), um embaixo do outro."""
         self.figura.clear()
         for k, (titulo, sinal) in enumerate(series, start=1):
             eixo = self.figura.add_subplot(len(series), 1, k)
@@ -223,6 +216,6 @@ class JanelaSimulador(Gtk.Window):
         self.canvas.draw()
 
     def executar(self):
-        """Mostra a janela e entra no laço de eventos do GTK."""
+        """Mostra a janela e entra no laço do GTK."""
         self.show_all()
         Gtk.main()

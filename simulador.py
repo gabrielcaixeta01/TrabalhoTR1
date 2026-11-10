@@ -1,21 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Simulador (rotina principal).
-
-Liga todas as camadas para simular uma transmissão completa, como no diagrama
-do enunciado:
-
-      Thread TX                                          Thread RX
-  aplicação -> enlace -> física  --> MEIO (+ ruído) --> física -> enlace -> aplicação
-
-Transmissor e receptor rodam em threads separadas (_rotina_tx e _rotina_rx) e
-só se comunicam pelo meio de comunicação, ligado a eles por filas (queue.Queue).
-
-`python3 simulador.py` abre a interface gráfica. executar_simulacao() também
-funciona sozinha (é o que testes.py usa).
-
-Este módulo só chama funções das outras camadas; não implementa protocolo.
-"""
+#Simulador
 
 import threading
 import queue
@@ -26,27 +10,21 @@ import camada_fisica
 import meio_comunicacao
 
 
-# Configuração padrão = o que a GUI mostra ao abrir. Chaves e valores aceitos:
 CONFIG_PADRAO = {
-    "texto": "Ola, TR1!",
-    "tam_max_quadro": 8,        # bytes de dados da aplicação por quadro
-    "enquadramento": "bits",    # contagem | entrelacamento | bytes | bits
+    "texto": "Que seu dia seja um ótimo dia!",
+    "tam_max_quadro": 8,        
+    "enquadramento": "bits",    
     "deteccao": "crc",          # nenhum | paridade | checksum | crc
     "correcao": "hamming",      # nenhum | hamming
     "bits_hamming": 7,          # bits de dados por bloco do Hamming (7 = (11,7))
     "mod_digital": "nrz",       # nrz | manchester | bipolar
     "mod_portadora": "8psk",    # nenhuma | ask | fsk | 8psk | 32qam
-    "ruido_media": 0.0,         # média (x) do ruído gaussiano, em Volts
-    "ruido_sigma": 0.1,         # desvio padrão (sigma) do ruído, em Volts
+    "ruido_media": 0.0,         
+    "ruido_sigma": 0.1,         
 }
 
 
 def _rotina_tx(config, meio, resultados):
-    """Thread transmissora: desce a pilha de protocolos e entrega o sinal ao meio.
-
-    Guarda em `resultados` a saída de cada etapa, para a GUI mostrar o que
-    cada camada produziu.
-    """
     # aplicação: texto -> bits
     bits_app = camada_aplicacao.texto_para_bits(config["texto"])
     resultados["tx_bits_aplicacao"] = bits_app
@@ -70,10 +48,10 @@ def _rotina_tx(config, meio, resultados):
 
 
 def _rotina_rx(config, meio, resultados):
-    """Thread receptora: espera o sinal do meio e sobe a pilha (caminho inverso)."""
     sinal_rx = meio.get()               # bloqueia até o canal entregar o sinal
-    if sinal_rx is None:                # o transmissor falhou: nada a receber
+    if sinal_rx is None:
         return
+    
     resultados["rx_sinal_recebido"] = sinal_rx
 
     # física: sinal -> bits
@@ -97,10 +75,9 @@ def _rotina_rx(config, meio, resultados):
 
 
 def _executar_thread(rotina, config, fila, resultados, erros):
-    """Roda uma rotina capturando a exceção, já que join() não a propaga.
-
-    O erro é guardado em `erros` para a thread principal relançar. Se o
-    transmissor falhar, manda None ao canal para ninguém ficar esperando.
+    """
+    Roda a rotina guardando a exceção em `erros` (join() não a propaga).
+    Se o transmissor falhar, manda None ao canal para o receptor não esperar.
     """
     try:
         rotina(config, fila, resultados)
@@ -111,43 +88,42 @@ def _executar_thread(rotina, config, fila, resultados, erros):
 
 
 def executar_simulacao(config):
-    """Executa uma simulação completa e devolve o dict `resultados`.
-
-    O dict traz os bits e sinais de cada camada (TX e RX) e as potências do
-    sinal e do ruído. A thread principal faz o papel do canal: pega o sinal do
-    TX, aplica o ruído e entrega ao RX. Se alguma thread falhar (ex.: o
-    ValueError do enlace), o erro é relançado aqui.
+    """
+    A thread principal faz o papel do canal: pega o sinal do TX, aplica o
+    ruído e entrega ao RX. Se alguma thread falhar, o erro é relançado aqui.
     """
     resultados = {}
     erros = []
-    fila_tx = queue.Queue()             # TX -> canal
-    fila_rx = queue.Queue()             # canal -> RX
+    fila_tx = queue.Queue()            
+    fila_rx = queue.Queue()            
 
-    thread_tx = threading.Thread(target=_executar_thread,
-                                 args=(_rotina_tx, config, fila_tx, resultados, erros))
-    thread_rx = threading.Thread(target=_executar_thread,
-                                 args=(_rotina_rx, config, fila_rx, resultados, erros))
+    thread_tx = threading.Thread(target=_executar_thread,args=(_rotina_tx, config, fila_tx, resultados, erros))
+    thread_rx = threading.Thread(target=_executar_thread,args=(_rotina_rx, config, fila_rx, resultados, erros))
+    
     thread_tx.start()
-    thread_rx.start()                   # o RX já começa esperando o sinal
+    thread_rx.start()  # o RX já começa esperando o sinal
 
-    # Canal: recebe o sinal limpo do TX e entrega o sinal ruidoso ao RX
+    #recebe o sinal limpo e entrega o sinal ruidoso ao RX
     sinal_limpo = fila_tx.get()
     if sinal_limpo is None:             # o TX falhou: libera o RX e segue
         fila_rx.put(None)
     else:
-        sinal_ruidoso = meio_comunicacao.transmitir(
-            sinal_limpo, config["ruido_media"], config["ruido_sigma"])
+        sinal_ruidoso = meio_comunicacao.transmitir(sinal_limpo, config["ruido_media"], config["ruido_sigma"])
         fila_rx.put(sinal_ruidoso)
 
     thread_tx.join()
     thread_rx.join()
+
     if erros:
         raise erros[0]
 
-    # Métricas: o ruído é a diferença entre o que chegou e o que foi enviado
-    ruido = [recebida - enviada for recebida, enviada in zip(sinal_ruidoso, sinal_limpo)]
+    ruido = []
+    for recebida, enviada in zip(sinal_ruidoso, sinal_limpo): #O zip junta duas listas posição por posição
+        ruido.append(recebida - enviada)
+
     resultados["potencia_sinal_w"] = meio_comunicacao.potencia_media(sinal_limpo)
     resultados["potencia_ruido_w"] = meio_comunicacao.potencia_media(ruido)
+
     return resultados
 
 
