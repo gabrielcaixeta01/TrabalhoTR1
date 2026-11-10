@@ -2,8 +2,6 @@
 """
 Camada de enlace.
 
-Prepara os bits da aplicação para serem enviados e, no receptor, confere e
-recupera esses bits. Tem três blocos:
   - enquadramento: contagem de caracteres, entrelaçamento, byte stuffing e bit stuffing
   - detecção de erros: paridade par, checksum e CRC-32
   - correção de erros: Hamming (11,7)
@@ -13,59 +11,36 @@ Transmissor (transmitir):
   cada bloco -> Hamming (opcional) -> enquadramento -> fluxo único de bits.
 Receptor (receber): o caminho inverso (desenquadra, corrige, verifica o EDC).
 
-Decisões de projeto (justificadas em docs/DECISOES.md):
-  - Todo EDC ocupa bytes inteiros, porque contagem e byte stuffing trabalham
-    com bytes: paridade 1 byte, checksum 2 bytes, CRC-32 4 bytes.
-  - O Hamming tem m bits de dados por bloco (configurável; 7 é o (11,7) dos
-    slides) e r bits de paridade calculados a partir de m. Os dados levam um
-    bit 1 de fim e zeros até múltiplo de m, e a saída é completada com zeros
-    até múltiplo de 8; o decodificador descarta esse enchimento.
-  - FLAG = 0x7E e ESC = 0x7D, como no HDLC/PPP.
 """
-
-
-FLAG_BYTE = 0x7E          # 01111110, delimitador de quadro
-ESC_BYTE = 0x7D           # caractere de escape do byte stuffing
-FLAG_BITS = [0, 1, 1, 1, 1, 1, 1, 0]
-
-# Quantos bytes cada detecção acrescenta ao final do payload
-TAMANHO_EDC = {"nenhum": 0, "paridade": 1, "checksum": 2, "crc": 4}
-
-# Colunas da matriz do entrelaçamento. Com 8, cada linha é um byte e o quadro
-# continua alinhado em bytes.
-N_COLUNAS_ENTRELACAMENTO = 8
-
-
-# auxiliares
 def bits_para_bytes(bits):
-    """Agrupa os bits de 8 em 8 em inteiros de 0 a 255 (uma sobra incompleta é ignorada).
-
-    Ex.: [0,1,0,0,0,0,0,1, 0,1,0,0,0,0,1,0] -> [65, 66]
-    """
     lista_bytes = []
     for inicio in range(0, len(bits) // 8 * 8, 8):
-        valor = 0
-        for bit in bits[inicio:inicio + 8]:
-            valor = (valor << 1) | bit      # empurra o valor e encaixa o bit
-        lista_bytes.append(valor)
+        byte = 0
+        for bit in bits[inicio: inicio + 8]:
+            byte = (byte << 1) | bit   
+        lista_bytes.append(byte)
     return lista_bytes
 
 
 def bytes_para_bits(lista_bytes):
-    """Expande cada byte em 8 bits, do mais significativo para o menos.
-
-    Ex.: [65] -> [0, 1, 0, 0, 0, 0, 0, 1]
-    """
     bits = []
-    for valor in lista_bytes:
+    for byte in lista_bytes:
         for posicao in range(7, -1, -1):
-            bits.append((valor >> posicao) & 1)
+            bits.append((byte >> posicao) & 1)
     return bits
+
+
+
+
+
+  
+TAMANHO_EDC = {"nenhum": 0, "paridade": 1, "checksum": 2, "crc": 4}
+
 
 
 # ===========================================================================
 # 1) Enquadramento
-# Cada enquadrar_* recebe uma lista de payloads (listas de bits em bytes
+# recebe uma lista de payloads (listas de bits em bytes
 # inteiros) e devolve um fluxo único de bits com todos os quadros. Cada
 # desenquadrar_* faz o inverso.
 #
@@ -76,13 +51,9 @@ def bytes_para_bits(lista_bytes):
 
 # contagem de caracteres
 def enquadrar_contagem(payloads):
-    """Quadro = 1 byte de contagem + payload.
-
-    A contagem inclui o próprio cabeçalho (2 bytes de dados -> contagem 3), como
-    nos slides. O receptor lê a contagem e sabe quantos bytes consumir.
-    Limite: o cabeçalho tem 8 bits, então o quadro tem no máximo 255 bytes.
-    Fraqueza: se a contagem for corrompida, o receptor perde o sincronismo de
-    todos os quadros seguintes.
+    """
+    Quadro = 1 byte de contagem + payload.
+    2 bytes de dados -> contagem = 3
     """
     bits = []
     for payload in payloads:
@@ -92,10 +63,8 @@ def enquadrar_contagem(payloads):
 
 
 def desenquadrar_contagem(bits):
-    """Lê o fluxo quadro a quadro: [contagem][payload][contagem][payload]...
-
-    Para se achar contagem 0 (é o padding da modulação, nunca um quadro
-    válido) ou um quadro que passa do fim do fluxo (truncado/corrompido).
+    """
+    Para se achar contagem 0 ou um quadro que passa do fim do fluxo (truncado/corrompido).
     """
     payloads = []
     pos = 0
@@ -103,7 +72,7 @@ def desenquadrar_contagem(bits):
         contagem = bits_para_bytes(bits[pos:pos + 8])[0]
         if contagem == 0:
             break
-        fim = pos + contagem * 8            # a contagem inclui o cabeçalho
+        fim = pos + contagem * 8  
         if fim > len(bits):
             break
         payloads.append(bits[pos + 8:fim])
@@ -112,12 +81,12 @@ def desenquadrar_contagem(bits):
 
 
 # entrelaçamento de bits
-# Algoritmo dos slides (TR1_09, 23-24): os dados formam uma matriz de linhas
+# Os dados formam uma matriz de linhas
 # com N colunas; calcula-se um bit de paridade par por coluna, numa linha
 # extra; a matriz é enviada linha por linha. Uma rajada de até N bits atinge
 # no máximo 1 bit por coluna, e a paridade da coluna detecta isso.
 #
-# Os slides não definem N nem como delimitar o quadro (ver docs/DECISOES.md):
+# N e a forma de delimitar o quadro são decisões do grupo (ver docs/DECISOES.md):
 # usamos N = N_COLUNAS_ENTRELACAMENTO e a contagem de caracteres como delimitador.
 def paridade_colunas(bits, n_colunas):
     """Calcula a paridade par de cada coluna da matriz (XOR dos bits da coluna)."""
@@ -128,8 +97,7 @@ def paridade_colunas(bits, n_colunas):
 
 
 def entrelacar(bits, n_colunas):
-    """Devolve os dados seguidos da linha de paridade das colunas.
-
+    """
     A matriz é enviada linha a linha, então basta interpretar os bits em
     linhas de n_colunas e anexar a paridade no final.
     """
@@ -139,8 +107,7 @@ def entrelacar(bits, n_colunas):
 
 
 def desentrelacar(bits, n_colunas):
-    """Inverso de entrelacar: devolve (dados, colunas_com_erro).
-
+    """
     Separa a linha de paridade recebida, recalcula a paridade dos dados e
     lista as colunas em que as duas diferem.
     """
@@ -151,6 +118,8 @@ def desentrelacar(bits, n_colunas):
                         if paridade_recebida[c] != paridade_calculada[c]]
     return dados, colunas_com_erro
 
+# Colunas da matriz do entrelaçamento. Com 8, cada linha é um byte e o quadro continua alinhado em bytes.
+N_COLUNAS_ENTRELACAMENTO = 8
 
 def enquadrar_entrelacamento(payloads, n_colunas=N_COLUNAS_ENTRELACAMENTO):
     """Entrelaça cada payload (adiciona a linha de paridade) e delimita pela contagem."""
@@ -164,12 +133,13 @@ def desenquadrar_entrelacamento(bits, n_colunas=N_COLUNAS_ENTRELACAMENTO):
 
 
 # FLAGs com inserção de bytes (byte stuffing)
-def enquadrar_bytes(payloads):
-    """Quadro = FLAG + payload com escape + FLAG.
+FLAG_BYTE = 0x7E         
+ESC_BYTE = 0x7D   
 
-    Se os dados tiverem um byte igual à FLAG, o receptor acharia que o quadro
-    acabou. Por isso, antes de todo byte que seja FLAG ou ESC, inserimos um ESC.
-    Ex.: dados [0x41, 0x7E, 0x42] -> 7E 41 7D 7E 42 7E
+def enquadrar_bytes(payloads):
+    """
+    Quadro = FLAG + payload com escape + FLAG.
+    Se os dados tiverem um byte igual à FLAG, inserimos um ESC.
     """
     saida = []
     for payload in payloads:
@@ -183,9 +153,9 @@ def enquadrar_bytes(payloads):
 
 
 def desenquadrar_bytes(bits):
-    """Percorre os bytes do fluxo com uma pequena máquina de estados.
-
-    Fora de quadro, ignora tudo até achar uma FLAG (abre o quadro). Dentro:
+    """
+    Fora de quadro, ignora tudo até achar uma FLAG.
+    Dentro:
       - ESC: o próximo byte é dado literal, mesmo que seja FLAG ou ESC;
       - FLAG: fecha o quadro (quadros vazios são ignorados);
       - outro byte: é dado.
@@ -194,31 +164,33 @@ def desenquadrar_bytes(bits):
     payloads = []
     quadro = None           # None = fora de quadro
     escapado = False
+
     for byte in bits_para_bytes(bits):
         if quadro is None:
             if byte == FLAG_BYTE:
                 quadro = []
+
         elif escapado:
             quadro.append(byte)
             escapado = False
+
         elif byte == ESC_BYTE:
             escapado = True
+
         elif byte == FLAG_BYTE:
             if quadro:
                 payloads.append(bytes_para_bits(quadro))
             quadro = None
+
         else:
             quadro.append(byte)
+
     return payloads
 
 
 # FLAGs com inserção de bits (bit stuffing)
 def inserir_stuffing(payload):
-    """Insere um 0 depois de cada sequência de cinco 1s seguidos.
-
-    Assim o payload nunca tem seis 1s seguidos, e o padrão 01111110 da FLAG
-    só aparece nos delimitadores.
-    """
+    #Insere um 0 depois de cada sequência de cinco 1s seguidos.
     saida = []
     uns = 0
     for bit in payload:
@@ -231,17 +203,20 @@ def inserir_stuffing(payload):
 
 
 def remover_stuffing(corpo):
-    """Inverso de inserir_stuffing: descarta o 0 que vem depois de cinco 1s."""
+    # descarta o 0 que vem depois de cinco 1s.
     saida = []
     uns = 0
     for bit in corpo:
-        if uns == 5:                # este é o 0 inserido pelo transmissor
+        if uns == 5:           
             uns = 0
             continue
         saida.append(bit)
         uns = uns + 1 if bit == 1 else 0
     return saida
 
+
+
+FLAG_BITS = [0, 1, 1, 1, 1, 1, 1, 0]
 
 def achar_flag(bits, inicio):
     """Devolve a posição da próxima FLAG a partir de `inicio`, ou None se não houver."""
@@ -252,7 +227,7 @@ def achar_flag(bits, inicio):
 
 
 def enquadrar_bits(payloads):
-    """Quadro = FLAG (01111110) + payload com bit stuffing + FLAG."""
+    #Quadro = FLAG (01111110) + payload com bit stuffing + FLAG.
     saida = []
     for payload in payloads:
         saida += FLAG_BITS + inserir_stuffing(payload) + FLAG_BITS
@@ -260,10 +235,9 @@ def enquadrar_bits(payloads):
 
 
 def desenquadrar_bits(bits):
-    """Procura pares de FLAGs e remove o stuffing do que está entre elas.
-
-    Se não houver FLAG de abertura ou de fechamento, para (o resto é padding
-    ou um quadro incompleto). Quadros vazios são ignorados.
+    """
+    Procura pares de FLAGs e remove o stuffing do que está entre elas.
+    Se não houver FLAG de abertura ou de fechamento, para.
     """
     payloads = []
     pos = 0
@@ -290,18 +264,13 @@ def desenquadrar_bits(bits):
 
 # paridade par
 def adicionar_paridade_par(bits):
-    """Anexa 1 byte: 7 zeros + o bit de paridade par do payload.
-
-    O bit de paridade deixa o total de 1s par (paridade = soma dos bits % 2).
-    Usamos um byte inteiro só para manter o alinhamento em bytes.
-    Limite: só detecta quantidade ímpar de bits errados.
-    """
+    #Anexa 1 byte: 7 zeros + o bit de paridade par do payload.
     paridade = sum(bits) % 2
     return bits + bytes_para_bits([paridade])
 
 
 def verificar_paridade_par(bits):
-    """Confere se o total de 1s (incluindo o byte de paridade) é par."""
+    #Confere se o total de 1s é par(incluindo o byte de paridade).
     if len(bits) < 8:
         return bits, False
     return bits[:-8], sum(bits) % 2 == 0
@@ -350,12 +319,12 @@ def verificar_checksum(bits):
 
 
 # CRC-32
-# Algoritmo dos slides (TR1_09, 30-33), divisão polinomial módulo 2:
+# Divisão polinomial módulo 2:
 #   TX: anexa 32 zeros à mensagem, divide por G(x) com XOR; o resto de 32
 #       bits é o CRC.
 #   RX: divide o quadro inteiro (dados + CRC) por G(x); resto 0 = sem erro.
 # G(x) do CRC-32 IEEE 802 (grau 32, 33 bits): 0x104C11DB7.
-# Os slides não falam de valor inicial, XOR final nem reflexão de bits, então
+# Não usamos valor inicial, XOR final nem reflexão de bits, então
 # o resultado não bate com o CRC-32 do zlib/Ethernet (e é proibido usar zlib).
 GERADOR_CRC32 = 0x104C11DB7
 
@@ -398,7 +367,7 @@ def verificar_crc32(bits):
 #
 # Cada bloco tem m bits de dados e r bits de paridade. O r é o menor valor que
 # satisfaz 2^r >= m + r + 1 (assim a síndrome consegue apontar qualquer
-# posição do bloco). Os slides usam m = 7, que dá r = 4 e o código (11,7);
+# posição do bloco). Com m = 7 temos r = 4 e o código (11,7);
 # aqui m é configurável (BITS_HAMMING_PADRAO é 7).
 #
 # Posições de 1 a n = m + r. As potências de 2 (1, 2, 4, 8, ...) guardam

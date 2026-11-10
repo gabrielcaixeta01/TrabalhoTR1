@@ -60,10 +60,10 @@ def modular_manchester(bits):
     """Transforma bits em tensão com uma transição no meio de cada bit.
 
     Essa transição permite ao receptor se sincronizar com o transmissor.
-    Convenção do slide 8 do CF-10 (dado XOR clock):
+    Convenção adotada (dado XOR clock):
         bit 0 -> -V na 1ª metade e +V na 2ª (baixo -> alto)
         bit 1 -> +V na 1ª metade e -V na 2ª (alto -> baixo)
-    A IEEE 802.3 usa a convenção inversa; aqui seguimos a dos slides.
+    A IEEE 802.3 usa a convenção inversa.
     """
     metade = AMOSTRAS_POR_BIT // 2
     resto = AMOSTRAS_POR_BIT - metade

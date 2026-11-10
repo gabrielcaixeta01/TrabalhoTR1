@@ -78,14 +78,14 @@ def main():
                    enlace.ENQUADRAR[tipo](payloads)) == payloads)
 
 
-    # Exemplo 7x7 do slide 24 (TR1_09): linha de paridade por coluna.
-    def paridade_slide():
+    # Exemplo 7x7: linha de paridade por coluna.
+    def paridade_exemplo():
         linhas = ("1001110", "1100101", "1110100", "1110111",
                   "1101111", "1110010", "1101011")
         matriz = [int(c) for linha in linhas for c in linha]
         return enlace.entrelacar(matriz, 7)[-7:] == [1, 0, 1, 1, 1, 1, 0]
-    testar("entrelaçamento: paridade do exemplo 7x7 dos slides == 1011110",
-           paridade_slide)
+    testar("entrelaçamento: paridade do exemplo 7x7 == 1011110",
+           paridade_exemplo)
     testar("contagem: 2 bytes de dados -> cabeçalho vale 3 (inclui o cabeçalho)",
            lambda: enlace.enquadrar_contagem([_bits_aleatorios(2)])[:8]
            == [0, 0, 0, 0, 0, 0, 1, 1])
