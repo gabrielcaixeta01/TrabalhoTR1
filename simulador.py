@@ -11,7 +11,7 @@ import meio_comunicacao
 
 
 CONFIG_PADRAO = {
-    "texto": "Que seu dia seja um ótimo dia!",
+    "texto": "Bom dia!",
     "tam_max_quadro": 8,        
     "enquadramento": "bits",    
     "deteccao": "crc",          # nenhum | paridade | checksum | crc

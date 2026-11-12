@@ -4,12 +4,6 @@ TESTES DE IDA E VOLTA
 =====================
 Roda sem GTK: `python3 testes.py`.
 
-COMO USAR DURANTE O DESENVOLVIMENTO
-  Cada função ainda não implementada lança NotImplementedError; o teste dela
-  aparece como [TODO] (não derruba os demais). Conforme vocês implementam, os
-  [TODO] viram [PASS] (ou [FAIL], se há bug). O objetivo é zerar os [TODO] e
-  os [FAIL].
-
 ESTRATÉGIA
   Aplicar a operação de TX e a de RX em sequência e verificar que a saída é
   IDÊNTICA à entrada (sem ruído), além de casos com valores conhecidos (CRC-32)
@@ -24,7 +18,7 @@ import camada_fisica as fisica
 import meio_comunicacao as meio
 import simulador
 
-RESULTADOS = {"PASS": 0, "FAIL": 0, "TODO": 0}
+RESULTADOS = {"PASS": 0, "FAIL": 0}
 
 
 def _bits_aleatorios(n_bytes):
@@ -36,14 +30,10 @@ def testar(nome, funcao):
     """Executa `funcao` (sem argumentos, devolve bool) e imprime o resultado.
 
     PASS  -> a função devolveu True
-    FAIL  -> devolveu False ou lançou outra exceção (bug)
-    TODO  -> lançou NotImplementedError (função ainda não implementada)
+    FAIL  -> devolveu False ou lançou exceção
     """
     try:
         status = "PASS" if funcao() else "FAIL"
-    except NotImplementedError as erro:
-        status = "TODO"
-        nome += f"   (falta implementar: {erro})"
     except Exception as erro:  # um bug não deve esconder os outros testes
         status = "FAIL"
         nome += f"   (exceção: {type(erro).__name__}: {erro})"
@@ -199,9 +189,8 @@ def main():
                 return simulador.executar_simulacao(config)["rx_texto"] == texto
             testar(f"simulação completa enq={enq} portadora={port}", completa)
 
-    print(f"\nRESUMO: {RESULTADOS['PASS']} PASS | {RESULTADOS['FAIL']} FAIL | "
-          f"{RESULTADOS['TODO']} TODO")
-    if RESULTADOS["FAIL"] == 0 and RESULTADOS["TODO"] == 0:
+    print(f"\nRESUMO: {RESULTADOS['PASS']} PASS | {RESULTADOS['FAIL']} FAIL")
+    if RESULTADOS["FAIL"] == 0:
         print("TODOS OS TESTES PASSARAM")
 
 
